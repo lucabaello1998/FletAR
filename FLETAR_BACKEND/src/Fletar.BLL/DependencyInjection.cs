@@ -1,5 +1,7 @@
 using Fletar.BLL.Helpers;
 using Fletar.BLL.Services.Auth;
+using Fletar.BLL.Services.Ofertas;
+using Fletar.BLL.Services.Publicaciones;
 using Fletar.BLL.Settings;
 using Fletar.DAL;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +21,8 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IUsuarioDevSeeder, UsuarioDevSeeder>();
+        services.AddScoped<IPublicacionService, PublicacionService>();
+        services.AddScoped<IOfertaService, OfertaService>();
 
         return services;
     }

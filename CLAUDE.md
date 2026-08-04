@@ -8,17 +8,24 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fase 0 completa: solución .NET con Auth JWT funcionando de punta a punta (registro,
-login, refresh con rotación/revocación, detección de reuso) contra Postgres+PostGIS
-en Docker, y el proyecto Flutter (mobile + desktop + web) arrancando con su
-estructura, tema y pantallas de login/registro — corriendo tanto de ventana nativa de
-Windows como en el navegador. Login con Google agregado como alternativa a
-email/password. Probado manualmente contra la API real — ver *Cómo se probó la Fase 0*.
+Fases 0, 1 y 2 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+(registro, login, refresh con rotación/revocación, detección de reuso) contra
+Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
+arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
+nativa de Windows como en el navegador. Login con Google agregado como alternativa
+a email/password (funcional, con credencial de Google Cloud ya configurada).
 
-**Sin arrancar:** todo lo que es dominio del negocio (Publicaciones, Ofertas,
-Calificaciones, mapa/geo, panel admin, push). Los modelos y el `DbContext` para esas
-entidades ya existen (ver *Modelo de datos*), pero no hay controllers, services ni
-pantallas todavía — eso es la Fase 1 en adelante (ver *Roadmap*).
+Fases 1 y 2 (Publicaciones + Ofertas + mapa/geo) se armaron con un patrón
+Gauntlet Loop (builders + críticos de contexto fresco que corren el artefacto real,
+no un resumen) y después una pasada de arreglos dirigida a mano — ver *Cómo se
+armaron las Fases 1 y 2* para el detalle de qué encontró cada etapa. Publicaciones y
+Ofertas tienen CRUD completo, geobúsqueda por cercanía (`ST_DWithin`), la máquina de
+estados completa (`Publicada → OfertaAceptada → EnCurso → Completada / Cancelada`)
+ejercitada de punta a punta desde la UI (no solo desde la API), y mapa real con
+`flutter_map`+OSM tanto para elegir origen/destino como para explorar publicaciones
+cercanas.
+
+**Sin arrancar:** Calificaciones, panel admin, push — ver *Roadmap*.
 
 ## Stack
 
@@ -107,9 +114,10 @@ de publicar la app.
 
 ## Modelo de datos
 
-Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/` (aunque
-Publicaciones/Ofertas/Calificaciones recién tienen controllers desde la Fase 1) para no
-tener que romper y rehacer el schema cuando arranque esa fase:
+Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/`. Publicacion y
+Oferta ya tienen su CRUD completo (`PublicacionesController`, `PublicacionService`,
+`OfertaService`) desde las Fases 1 y 2; Calificacion todavía no tiene controller ni
+service (Fase 3):
 
 - **Usuario**: cuenta única, sin distinción publicador/fletero. `Rol` (`Usuario`/`Admin`)
   como único diferenciador de permisos. `PasswordHash` es `string?`: una cuenta creada
@@ -298,20 +306,50 @@ También corriendo de punta a punta contra la API real (no solo compilado): la a
 Flutter como ventana nativa de Windows (`flutter run -d windows`, requirió agregar el
 workload "Desktop development with C++" a Visual Studio) y en Chrome
 (`flutter run -d chrome`), ambas mostrando la pantalla de login real. Login con Google
-implementado y compila en los tres targets (`flutter build web` OK, `flutter analyze`
-y `flutter test` sin errores) pero **no probado end-to-end**: falta la credencial de
-Google Cloud (ver *Login con Google*) que solo alguien con acceso a esa consola puede
-crear.
+implementado, compila en los tres targets, y ya tiene un Client ID real de Google Cloud
+configurado en `FLETAR_BACKEND/.env` — pendiente de que Google termine de propagar la
+credencial nueva (puede tardar de minutos a horas) para probar el flujo completo con
+una cuenta real.
+
+## Cómo se armaron las Fases 1 y 2 (Gauntlet Loop)
+
+Publicaciones, Ofertas y el mapa/geo se construyeron con un workflow de builders +
+críticos de contexto fresco (patrón "Gauntlet Loop": el que construye nunca se
+autoevalúa, el crítico corre el artefacto real —build, curl, `flutter analyze`/`test`—
+en vez de confiar en un resumen). Costó 9 agentes / ~658k tokens / ~54 min para las 4
+etapas (Publicaciones+geo, Ofertas+transiciones, Flutter UI, Flutter mapa) más una
+verificación final integrada.
+
+Las 4 etapas pasaron su propio crítico a la primera ronda. La verificación **final**
+—que prueba todo junto, no pieza por pieza— encontró lo que un crítico por etapa no
+podía ver: el backend soportaba toda la máquina de estados
+(`Publicada→OfertaAceptada→EnCurso→Completada`), pero la UI de Flutter solo llegaba
+hasta aceptar una oferta. Nadie podía marcar un flete en curso, completarlo ni
+cancelarlo desde la app, y encima una publicación **desaparecía del listado
+principal** apenas se le aceptaba una oferta (el listado filtraba `Estado=Publicada`
+por defecto y no había forma de pedir las propias en cualquier estado). Se arregló
+después a mano, sin otra vuelta del workflow:
+
+- Backend: `GET /api/publicaciones?soloMias=true` devuelve las publicaciones del
+  usuario logueado en cualquier estado (el listado público sigue filtrando solo
+  `Publicada`, que es lo que le sirve a alguien buscando qué ofertar).
+- Flutter: pestaña "Mis publicaciones" en el listado (además de "Explorar"), botones
+  de Cancelar/Marcar en curso/Marcar completada en el detalle (uno solo visible según
+  el estado, y solo para el dueño), botón "Retirar" en las ofertas propias pendientes,
+  y campos de destino (con su propio mapa) + fecha deseada en el alta.
+
+Moraleja para la próxima vez que se use este patrón acá: los críticos por etapa
+verifican bien su propia pieza, pero la integración cruzada (¿la UI expone *todo* lo
+que el backend soporta?) solo la agarra una verificación final de punta a punta — no
+alcanza con que cada etapa apruebe por separado.
 
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
-- **Fase 1 — Publicaciones + Ofertas.** CRUD de `Publicacion` (con dirección en texto,
-  todavía sin geo), crear/listar/aceptar `Oferta`, transiciones de `EstadoPublicacion`.
-  Pantallas Flutter de listado/detalle/alta, sin mapa.
-- **Fase 2 — Mapa/geo.** `GET /publicaciones/cercanas?lat&lng&radioKm` con
-  `ST_DWithin` sobre el índice GIST ya creado. Integración de `flutter_map` (selector
-  de origen al publicar, vista de mapa/lista al buscar).
+- **Fase 1 — listo.** Publicaciones + Ofertas: CRUD completo, transiciones de
+  `EstadoPublicacion` (incluida cancelación) ejercitadas desde la UI, no solo la API.
+- **Fase 2 — listo.** `GET /publicaciones/cercanas?lat&lng&radioKm` con `ST_DWithin`,
+  `flutter_map` para elegir origen/destino al publicar y para explorar cercanas.
 - **Fase 3 — Calificaciones.** Habilitada solo tras `Completada`, un rating por
   dirección por publicación.
 - **Fase 4 — Panel admin.** `Reporte` + flujo de reportar una publicación, ruta
@@ -320,6 +358,10 @@ crear.
 - **Fase 5 — Push.** Endpoint para registrar `FcmToken`, `FcmSenderService` en BLL
   disparado en nueva-oferta/oferta-aceptada/publicacion-completada. Alcance mobile
   únicamente (ver *Stack*).
+
+Gaps menores conocidos, no bloqueantes: sin tests automatizados de
+`PublicacionService`/`OfertaService` (solo hay tests triviales de salud); la vista de
+mapa de "cercanas" usa una ubicación fija (CABA) hasta que se integre `geolocator`.
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.

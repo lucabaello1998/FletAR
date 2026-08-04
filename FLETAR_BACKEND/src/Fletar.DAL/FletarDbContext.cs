@@ -33,6 +33,21 @@ public class FletarDbContext : DbContext
             b.HasIndex(rt => rt.FamiliaId);
         });
 
+        modelBuilder.Entity<CategoriaCarga>().HasData(
+            new CategoriaCarga { Id = 1, Nombre = "Mudanza", Activa = true },
+            new CategoriaCarga { Id = 2, Nombre = "Paquetería chica", Activa = true },
+            new CategoriaCarga { Id = 3, Nombre = "Carga mediana", Activa = true },
+            new CategoriaCarga { Id = 4, Nombre = "Carga grande", Activa = true },
+            new CategoriaCarga { Id = 5, Nombre = "Otro", Activa = true });
+
+        modelBuilder.Entity<TipoVehiculo>().HasData(
+            new TipoVehiculo { Id = 1, Nombre = "Moto", Activo = true },
+            new TipoVehiculo { Id = 2, Nombre = "Utilitario", Activo = true },
+            new TipoVehiculo { Id = 3, Nombre = "Camioneta", Activo = true },
+            new TipoVehiculo { Id = 4, Nombre = "Camión chico", Activo = true },
+            new TipoVehiculo { Id = 5, Nombre = "Camión grande", Activo = true },
+            new TipoVehiculo { Id = 6, Nombre = "Camión con acoplado", Activo = true });
+
         modelBuilder.Entity<Publicacion>(b =>
         {
             b.Property(p => p.Origen).HasColumnType("geography (Point,4326)");

@@ -13,6 +13,7 @@ public class ManejadorDeExcepciones(ILogger<ManejadorDeExcepciones> logger) : IE
         var statusCode = exception switch
         {
             UnauthorizedAccessException => StatusCodes.Status401Unauthorized,
+            KeyNotFoundException => StatusCodes.Status404NotFound,
             InvalidOperationException => StatusCodes.Status400BadRequest,
             _ => StatusCodes.Status500InternalServerError
         };

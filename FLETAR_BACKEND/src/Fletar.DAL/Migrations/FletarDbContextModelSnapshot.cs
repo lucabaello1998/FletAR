@@ -80,6 +80,38 @@ namespace Fletar.DAL.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("CategoriasCarga");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Activa = true,
+                            Nombre = "Mudanza"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Activa = true,
+                            Nombre = "Paquetería chica"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Activa = true,
+                            Nombre = "Carga mediana"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Activa = true,
+                            Nombre = "Carga grande"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Activa = true,
+                            Nombre = "Otro"
+                        });
                 });
 
             modelBuilder.Entity("Fletar.DAL.Models.Oferta", b =>
@@ -282,6 +314,44 @@ namespace Fletar.DAL.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TiposVehiculo");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Activo = true,
+                            Nombre = "Moto"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Activo = true,
+                            Nombre = "Utilitario"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Activo = true,
+                            Nombre = "Camioneta"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Activo = true,
+                            Nombre = "Camión chico"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Activo = true,
+                            Nombre = "Camión grande"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Activo = true,
+                            Nombre = "Camión con acoplado"
+                        });
                 });
 
             modelBuilder.Entity("Fletar.DAL.Models.Usuario", b =>
