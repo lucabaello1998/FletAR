@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- FletAR logo v0 - placeholder a mano, ver CLAUDE.md "Identidad visual" -->
+  <path d="M64 10 C38 10 18 30 18 54 C18 88 64 118 64 118 C64 118 110 88 110 54 C110 30 90 10 64 10 Z"
+        fill="#1E3A5F" />
+  <circle cx="64" cy="54" r="34" fill="#FAFAF8" />
+  <g transform="translate(34, 42)">
+    <rect x="0" y="6" width="36" height="18" rx="2" fill="#F97316" />
+    <path d="M36 12 H50 L58 20 V24 H36 Z" fill="#F97316" />
+    <rect x="40" y="14" width="10" height="7" fill="#FAFAF8" opacity="0.6" />
+    <circle cx="10" cy="26" r="6" fill="#1E2530" />
+    <circle cx="10" cy="26" r="2.5" fill="#FAFAF8" />
+    <circle cx="46" cy="26" r="6" fill="#1E2530" />
+    <circle cx="46" cy="26" r="2.5" fill="#FAFAF8" />
+  </g>
+</svg>

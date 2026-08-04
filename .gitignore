@@ -1,0 +1,28 @@
+# .NET
+FLETAR_BACKEND/**/bin/
+FLETAR_BACKEND/**/obj/
+FLETAR_BACKEND/.env
+FLETAR_BACKEND/**/firebase-service-account.json
+*.user
+
+# Flutter / Dart
+FLETAR_APP/.dart_tool/
+FLETAR_APP/.flutter-plugins
+FLETAR_APP/.flutter-plugins-dependencies
+FLETAR_APP/.pub-cache/
+FLETAR_APP/.pub/
+FLETAR_APP/build/
+FLETAR_APP/android/.gradle/
+FLETAR_APP/android/local.properties
+FLETAR_APP/ios/Pods/
+FLETAR_APP/ios/.symlinks/
+FLETAR_APP/**/*.g.dart
+FLETAR_APP/**/*.freezed.dart
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.suo
+.DS_Store
+Thumbs.db

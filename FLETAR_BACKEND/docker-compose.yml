@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fletar}
+      POSTGRES_USER: ${POSTGRES_USER:-fletar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # 5433 en el host: el 5432 nativo puede estar ocupado por un Postgres
+    # instalado localmente (pasó en desarrollo con postgresql-x64-18).
+    ports: ["5433:5432"]
+    volumes: [fletar_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fletar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["8080:8080"]
+
+volumes:
+  fletar_pgdata:
