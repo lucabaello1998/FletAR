@@ -16,6 +16,17 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
+/// En desktop (Windows/Mac/Linux) no hay implementación de plataforma para
+/// google_sign_in, y el placeholder de google_sign_in_platform_interface
+/// tira UnimplementedError en vez de devolver false - hay que atajarlo acá.
+bool _soportaGoogleSignInNativo() {
+  try {
+    return GoogleSignIn.instance.supportsAuthenticate();
+  } on UnimplementedError {
+    return false;
+  }
+}
+
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -99,7 +110,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       const SizedBox(height: 16),
                       if (kIsWeb)
                         Center(child: renderGoogleButton())
-                      else if (GoogleSignIn.instance.supportsAuthenticate())
+                      else if (_soportaGoogleSignInNativo())
                         OutlinedButton(
                           onPressed: authState.isLoading
                               ? null

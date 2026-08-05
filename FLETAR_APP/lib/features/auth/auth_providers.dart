@@ -61,7 +61,11 @@ class AuthController extends AsyncNotifier<Usuario?> {
   /// Google (ver `web_only.renderButton` en login_screen.dart) - este método
   /// no hace nada ahí, `supportsAuthenticate()` da false.
   Future<void> iniciarConGoogle() async {
-    if (!GoogleSignIn.instance.supportsAuthenticate()) return;
+    try {
+      if (!GoogleSignIn.instance.supportsAuthenticate()) return;
+    } on UnimplementedError {
+      return;
+    }
     try {
       await GoogleSignIn.instance.authenticate();
       // El idToken llega por authenticationEvents y dispara _loginConGoogleIdToken.
