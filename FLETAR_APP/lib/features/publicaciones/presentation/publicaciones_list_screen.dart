@@ -7,9 +7,14 @@ import 'package:latlong2/latlong.dart' as ll;
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
+import '../../ofertas/domain/oferta.dart';
+import '../../ofertas/ofertas_providers.dart';
+import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../domain/publicacion.dart';
 import '../publicaciones_providers.dart';
 import 'publicacion_estado.dart';
+
+enum _VistaLista { explorar, misPublicaciones, misOfertas }
 
 class PublicacionesListScreen extends ConsumerStatefulWidget {
   const PublicacionesListScreen({super.key});
@@ -20,11 +25,12 @@ class PublicacionesListScreen extends ConsumerStatefulWidget {
 
 class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScreen> {
   bool _mostrarMapa = false;
-  bool _mostrarMisPublicaciones = false;
+  _VistaLista _vista = _VistaLista.explorar;
 
   Future<void> _recargarTodo() async {
     ref.read(publicacionesListProvider.notifier).recargar();
     ref.read(misPublicacionesProvider.notifier).recargar();
+    ref.read(misOfertasProvider.notifier).recargar();
   }
 
   @override
@@ -35,7 +41,7 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
       appBar: AppBar(
         title: const Text('FletAR'),
         actions: [
-          if (!_mostrarMisPublicaciones)
+          if (_vista == _VistaLista.explorar)
             IconButton(
               icon: Icon(_mostrarMapa ? Icons.list : Icons.map_outlined),
               tooltip: _mostrarMapa ? 'Ver lista' : 'Ver mapa de cercanas',
@@ -51,22 +57,38 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, icon: Icon(Icons.explore_outlined), label: Text('Explorar')),
-                ButtonSegment(value: true, icon: Icon(Icons.person_outline), label: Text('Mis publicaciones')),
-              ],
-              selected: {_mostrarMisPublicaciones},
-              onSelectionChanged: (seleccion) =>
-                  setState(() => _mostrarMisPublicaciones = seleccion.first),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SegmentedButton<_VistaLista>(
+                segments: const [
+                  ButtonSegment(
+                    value: _VistaLista.explorar,
+                    icon: Icon(Icons.explore_outlined),
+                    label: Text('Explorar'),
+                  ),
+                  ButtonSegment(
+                    value: _VistaLista.misPublicaciones,
+                    icon: Icon(Icons.person_outline),
+                    label: Text('Mis publicaciones'),
+                  ),
+                  ButtonSegment(
+                    value: _VistaLista.misOfertas,
+                    icon: Icon(Icons.local_shipping_outlined),
+                    label: Text('Mis ofertas'),
+                  ),
+                ],
+                selected: {_vista},
+                onSelectionChanged: (seleccion) => setState(() => _vista = seleccion.first),
+              ),
             ),
           ),
           Expanded(
-            child: _mostrarMisPublicaciones
-                ? const _MisPublicaciones()
-                : (_mostrarMapa
-                    ? const _MapaPublicacionesCercanas()
-                    : RefreshIndicator(
+            child: switch (_vista) {
+              _VistaLista.misPublicaciones => const _MisPublicaciones(),
+              _VistaLista.misOfertas => const _MisOfertas(),
+              _VistaLista.explorar => _mostrarMapa
+                  ? const _MapaPublicacionesCercanas()
+                  : RefreshIndicator(
                         onRefresh: () => ref.read(publicacionesListProvider.notifier).recargar(),
                         child: publicacionesState.when(
                           data: (publicaciones) =>
@@ -92,7 +114,8 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
                             ],
                           ),
                         ),
-                      )),
+                      ),
+            },
           ),
         ],
       ),
@@ -146,6 +169,100 @@ class _MisPublicaciones extends ConsumerWidget {
   }
 }
 
+/// Ofertas que hice yo (no soy el dueño de la publicación) - único camino
+/// para volver a una publicación en la que participé una vez que deja de
+/// estar Publicada (para poder, por ejemplo, calificar al dueño después de
+/// Completada). Ver OfertasApi.misOfertas.
+class _MisOfertas extends ConsumerWidget {
+  const _MisOfertas();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(misOfertasProvider);
+
+    return RefreshIndicator(
+      onRefresh: () => ref.read(misOfertasProvider.notifier).recargar(),
+      child: state.when(
+        data: (ofertas) => _ListaMisOfertas(ofertas: ofertas),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stackTrace) => ListView(
+          children: [
+            const SizedBox(height: 120),
+            Icon(Icons.error_outline, size: 48, color: FletarColors.destructive),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(mensajeDeError(error), textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 12),
+            Center(
+              child: TextButton(
+                onPressed: () => ref.read(misOfertasProvider.notifier).recargar(),
+                child: const Text('Reintentar'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ListaMisOfertas extends ConsumerWidget {
+  const _ListaMisOfertas({required this.ofertas});
+
+  final List<Oferta> ofertas;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ofertas.isEmpty) {
+      return ListView(
+        children: const [
+          SizedBox(height: 120),
+          Center(
+            child: Text(
+              'Todavía no ofertaste en ninguna publicación.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: ofertas.length,
+      itemBuilder: (context, index) {
+        final oferta = ofertas[index];
+        return Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(12),
+            title: Text(oferta.publicacionTitulo, style: Theme.of(context).textTheme.titleMedium),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Tu oferta: \$${oferta.monto.toStringAsFixed(2)}',
+                      style: const TextStyle(color: FletarColors.mutedForeground)),
+                  const SizedBox(height: 8),
+                  EstadoPublicacionBadge(estado: oferta.publicacionEstado),
+                ],
+              ),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await context.push('/publicaciones/${oferta.publicacionId}');
+              ref.read(misOfertasProvider.notifier).recargar();
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _ListaPublicaciones extends StatelessWidget {
   const _ListaPublicaciones({
     required this.publicaciones,
@@ -191,6 +308,23 @@ class _ListaPublicaciones extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: FletarColors.mutedForeground),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.person_outline, size: 14, color: FletarColors.mutedForeground),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          publicacion.usuarioNombre,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ReputacionIndicador(usuarioId: publicacion.usuarioId),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   EstadoPublicacionBadge(estado: publicacion.estado),

@@ -4,8 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
+import '../../calificaciones/calificaciones_providers.dart';
+import '../../calificaciones/domain/calificacion.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
+import '../../usuarios/presentation/reputacion_indicador.dart';
+import '../../usuarios/usuarios_providers.dart';
 import '../domain/categoria_carga.dart';
 import '../domain/publicacion.dart';
 import '../domain/tipo_vehiculo.dart';
@@ -234,6 +238,17 @@ class _DetalleCargado extends ConsumerWidget {
               EstadoPublicacionBadge(estado: publicacion.estado),
             ],
           ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Icon(Icons.person_outline, size: 16, color: FletarColors.mutedForeground),
+              const SizedBox(width: 4),
+              Text('Publica: ${publicacion.usuarioNombre}',
+                  style: const TextStyle(color: FletarColors.mutedForeground)),
+              const SizedBox(width: 8),
+              ReputacionIndicador(usuarioId: publicacion.usuarioId),
+            ],
+          ),
           if (esDueno) ...[
             const SizedBox(height: 12),
             _AccionesDueno(
@@ -290,6 +305,14 @@ class _DetalleCargado extends ConsumerWidget {
             ),
             error: (error, stackTrace) => Text(mensajeDeError(error)),
           ),
+          if (publicacion.estado == EstadoPublicacion.completada)
+            _SeccionCalificaciones(
+              publicacion: publicacion,
+              usuarioActualId: usuarioId,
+              esDueno: esDueno,
+              ofertaAceptadaUsuarioId:
+                  _ofertaAceptadaUsuarioId(ofertasState.valueOrNull ?? const [], publicacion.ofertaAceptadaId),
+            ),
           if (!esDueno) ...[
             const Divider(height: 32),
             Text('Hacer una oferta', style: Theme.of(context).textTheme.titleMedium),
@@ -452,6 +475,22 @@ class _ListaOfertas extends StatelessWidget {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.person_outline, size: 14, color: FletarColors.mutedForeground),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              oferta.usuarioNombre,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          ReputacionIndicador(usuarioId: oferta.usuarioId),
+                        ],
+                      ),
                       if (oferta.mensaje != null && oferta.mensaje!.isNotEmpty) Text(oferta.mensaje!),
                       Text(_formatearFecha(oferta.fechaOferta),
                           style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
@@ -519,5 +558,279 @@ Color _colorEstadoOferta(String estado) {
       return FletarColors.destructive;
     default:
       return FletarColors.mutedForeground;
+  }
+}
+
+/// Busca en la lista de ofertas ya cargada cuál es la aceptada, para saber
+/// quién es "la otra parte" a calificar (mismo criterio que
+/// CalificacionService.DeterminarCalificadoAsync en el backend, hecho acá con
+/// datos que la pantalla ya tiene en memoria en vez de pedirle de nuevo al
+/// servidor).
+int? _ofertaAceptadaUsuarioId(List<Oferta> ofertas, int? ofertaAceptadaId) {
+  if (ofertaAceptadaId == null) return null;
+  for (final oferta in ofertas) {
+    if (oferta.id == ofertaAceptadaId) return oferta.usuarioId;
+  }
+  return null;
+}
+
+/// Sección de calificaciones de una Publicación Completada: lista las que ya
+/// existen y, si quien mira participó (dueño u ofertante aceptado) y todavía
+/// no calificó a la otra parte, muestra el formulario para hacerlo.
+class _SeccionCalificaciones extends ConsumerStatefulWidget {
+  const _SeccionCalificaciones({
+    required this.publicacion,
+    required this.usuarioActualId,
+    required this.esDueno,
+    required this.ofertaAceptadaUsuarioId,
+  });
+
+  final Publicacion publicacion;
+  final int? usuarioActualId;
+  final bool esDueno;
+  final int? ofertaAceptadaUsuarioId;
+
+  @override
+  ConsumerState<_SeccionCalificaciones> createState() => _SeccionCalificacionesState();
+}
+
+class _SeccionCalificacionesState extends ConsumerState<_SeccionCalificaciones> {
+  int _puntaje = 5;
+  final _comentarioController = TextEditingController();
+  bool _enviando = false;
+
+  bool get _participo =>
+      widget.usuarioActualId != null &&
+      (widget.esDueno || widget.usuarioActualId == widget.ofertaAceptadaUsuarioId);
+
+  @override
+  void dispose() {
+    _comentarioController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _enviarCalificacion() async {
+    setState(() => _enviando = true);
+    try {
+      await ref.read(calificacionesDePublicacionProvider(widget.publicacion.id).notifier).crear(
+            puntaje: _puntaje,
+            comentario:
+                _comentarioController.text.trim().isEmpty ? null : _comentarioController.text.trim(),
+          );
+      _comentarioController.clear();
+      if (mounted) setState(() => _puntaje = 5);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensajeDeError(e))));
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final calificacionesState = ref.watch(calificacionesDePublicacionProvider(widget.publicacion.id));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 32),
+        Text('Calificaciones', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        calificacionesState.when(
+          data: (calificaciones) => _contenido(calificaciones),
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, stackTrace) => Text(mensajeDeError(error)),
+        ),
+      ],
+    );
+  }
+
+  Widget _contenido(List<Calificacion> calificaciones) {
+    Calificacion? miCalificacion;
+    if (widget.usuarioActualId != null) {
+      for (final calificacion in calificaciones) {
+        if (calificacion.usuarioQueCalificaId == widget.usuarioActualId) {
+          miCalificacion = calificacion;
+          break;
+        }
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (calificaciones.isEmpty)
+          const Text('Todavía no hay calificaciones para esta publicación.',
+              style: TextStyle(color: FletarColors.mutedForeground))
+        else
+          ...calificaciones.map((c) => _TarjetaCalificacion(
+                calificacion: c,
+                esLaMia: widget.usuarioActualId != null && c.usuarioQueCalificaId == widget.usuarioActualId,
+              )),
+        if (_participo) ...[
+          const SizedBox(height: 12),
+          if (miCalificacion != null)
+            const Text(
+              'Ya calificaste esta publicación (tu calificación está en la lista de arriba).',
+              style: TextStyle(color: FletarColors.mutedForeground, fontStyle: FontStyle.italic),
+            )
+          else
+            _FormularioCalificacion(
+              puntaje: _puntaje,
+              comentarioController: _comentarioController,
+              enviando: _enviando,
+              onCambiarPuntaje: (p) => setState(() => _puntaje = p),
+              onEnviar: _enviarCalificacion,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FormularioCalificacion extends StatelessWidget {
+  const _FormularioCalificacion({
+    required this.puntaje,
+    required this.comentarioController,
+    required this.enviando,
+    required this.onCambiarPuntaje,
+    required this.onEnviar,
+  });
+
+  final int puntaje;
+  final TextEditingController comentarioController;
+  final bool enviando;
+  final ValueChanged<int> onCambiarPuntaje;
+  final Future<void> Function() onEnviar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Calificá a la otra parte', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            _EstrellasSelector(puntaje: puntaje, onCambiar: onCambiarPuntaje),
+            const SizedBox(height: 8),
+            TextField(
+              controller: comentarioController,
+              decoration: const InputDecoration(labelText: 'Comentario (opcional)'),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: enviando ? null : onEnviar,
+              child: enviando
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text('Enviar calificación'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EstrellasSelector extends StatelessWidget {
+  const _EstrellasSelector({required this.puntaje, required this.onCambiar});
+
+  final int puntaje;
+  final ValueChanged<int> onCambiar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(5, (i) {
+        final valor = i + 1;
+        return IconButton(
+          onPressed: () => onCambiar(valor),
+          icon: Icon(
+            valor <= puntaje ? Icons.star : Icons.star_border,
+            color: FletarColors.warning,
+          ),
+          tooltip: '$valor estrella${valor == 1 ? '' : 's'}',
+        );
+      }),
+    );
+  }
+}
+
+class _EstrellasReadOnly extends StatelessWidget {
+  const _EstrellasReadOnly({required this.puntaje});
+
+  final int puntaje;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(
+        5,
+        (i) => Icon(
+          i < puntaje ? Icons.star : Icons.star_border,
+          size: 16,
+          color: FletarColors.warning,
+        ),
+      ),
+    );
+  }
+}
+
+class _TarjetaCalificacion extends ConsumerWidget {
+  const _TarjetaCalificacion({required this.calificacion, this.esLaMia = false});
+
+  final Calificacion calificacion;
+  final bool esLaMia;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final calificadorState = ref.watch(usuarioPublicoProvider(calificacion.usuarioQueCalificaId));
+    final calificadoState = ref.watch(usuarioPublicoProvider(calificacion.usuarioCalificadoId));
+    final nombreCalificador =
+        calificadorState.valueOrNull?.nombre ?? 'Usuario #${calificacion.usuarioQueCalificaId}';
+    final nombreCalificado =
+        calificadoState.valueOrNull?.nombre ?? 'Usuario #${calificacion.usuarioCalificadoId}';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      color: esLaMia ? FletarColors.primary.withValues(alpha: 0.06) : null,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '$nombreCalificador calificó a $nombreCalificado',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                _EstrellasReadOnly(puntaje: calificacion.puntaje),
+              ],
+            ),
+            if (calificacion.comentario != null && calificacion.comentario!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(calificacion.comentario!),
+            ],
+            const SizedBox(height: 4),
+            Text(_formatearFecha(calificacion.fechaCalificacion),
+                style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
   }
 }

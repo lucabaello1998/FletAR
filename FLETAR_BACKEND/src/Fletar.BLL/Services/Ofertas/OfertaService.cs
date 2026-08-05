@@ -31,7 +31,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
         db.Ofertas.Add(oferta);
         await db.SaveChangesAsync();
 
-        return mapper.Map<OfertaResponse>(oferta);
+        return await MapearConNombreAsync(oferta);
     }
 
     public async Task<IReadOnlyList<OfertaResponse>> ListarPorPublicacionAsync(int publicacionId)
@@ -43,7 +43,23 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
             .OrderByDescending(o => o.FechaOferta)
             .ToListAsync();
 
-        return mapper.Map<List<OfertaResponse>>(ofertas);
+        return await MapearConNombresAsync(ofertas);
+    }
+
+    public async Task<IReadOnlyList<OfertaResponse>> ListarMiasAsync(int usuarioId)
+    {
+        // A diferencia de ListarPorPublicacionAsync, esto cruza publicaciones en
+        // cualquier estado: es la única forma que tiene un fletero (oferente, no
+        // dueño) de volver a encontrar una publicación una vez que deja de estar
+        // Publicada - "Mis publicaciones" filtra por dueño, y el listado público
+        // filtra a Publicada, así que sin esto no hay ningún camino de navegación
+        // para que oferte, y después, califique al dueño.
+        var ofertas = await db.Ofertas
+            .Where(o => o.UsuarioId == usuarioId)
+            .OrderByDescending(o => o.FechaOferta)
+            .ToListAsync();
+
+        return await MapearConNombresAsync(ofertas);
     }
 
     public async Task<OfertaResponse> AceptarAsync(int publicacionId, int ofertaId, int usuarioIdQueAcepta)
@@ -77,7 +93,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
 
         await db.SaveChangesAsync();
 
-        return mapper.Map<OfertaResponse>(oferta);
+        return await MapearConNombreAsync(oferta);
     }
 
     public async Task<OfertaResponse> RetirarAsync(int ofertaId, int usuarioIdQueRetira)
@@ -93,7 +109,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
         oferta.Estado = EstadoOferta.Retirada;
         await db.SaveChangesAsync();
 
-        return mapper.Map<OfertaResponse>(oferta);
+        return await MapearConNombreAsync(oferta);
     }
 
     public async Task IniciarAsync(int publicacionId, int usuarioIdDueno)
@@ -131,4 +147,53 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
     private async Task<Oferta> BuscarOfertaOFallarAsync(int ofertaId)
         => await db.Ofertas.SingleOrDefaultAsync(o => o.Id == ofertaId)
             ?? throw new KeyNotFoundException("La oferta indicada no existe.");
+
+    // Mismo criterio que en PublicacionService: UsuarioNombre no viene de una
+    // navegación de EF, se resuelve acá con un único lookup por lote.
+    private async Task<OfertaResponse> MapearConNombreAsync(Oferta oferta)
+    {
+        var response = mapper.Map<OfertaResponse>(oferta);
+        response.UsuarioNombre = await db.Usuarios
+            .Where(u => u.Id == oferta.UsuarioId)
+            .Select(u => u.Nombre)
+            .SingleOrDefaultAsync() ?? string.Empty;
+
+        var publicacion = await db.Publicaciones
+            .Where(p => p.Id == oferta.PublicacionId)
+            .Select(p => new { p.Titulo, p.Estado })
+            .SingleOrDefaultAsync();
+        response.PublicacionTitulo = publicacion?.Titulo ?? string.Empty;
+        response.PublicacionEstado = publicacion?.Estado.ToString() ?? string.Empty;
+
+        return response;
+    }
+
+    private async Task<IReadOnlyList<OfertaResponse>> MapearConNombresAsync(List<Oferta> ofertas)
+    {
+        var responses = mapper.Map<List<OfertaResponse>>(ofertas);
+
+        var usuarioIds = ofertas.Select(o => o.UsuarioId).Distinct().ToList();
+        var nombresPorId = await db.Usuarios
+            .Where(u => usuarioIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Nombre })
+            .ToDictionaryAsync(u => u.Id, u => u.Nombre);
+
+        var publicacionIds = ofertas.Select(o => o.PublicacionId).Distinct().ToList();
+        var publicacionesPorId = await db.Publicaciones
+            .Where(p => publicacionIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Titulo, p.Estado })
+            .ToDictionaryAsync(p => p.Id);
+
+        foreach (var response in responses)
+        {
+            response.UsuarioNombre = nombresPorId.GetValueOrDefault(response.UsuarioId, string.Empty);
+            if (publicacionesPorId.TryGetValue(response.PublicacionId, out var publicacion))
+            {
+                response.PublicacionTitulo = publicacion.Titulo;
+                response.PublicacionEstado = publicacion.Estado.ToString();
+            }
+        }
+
+        return responses;
+    }
 }

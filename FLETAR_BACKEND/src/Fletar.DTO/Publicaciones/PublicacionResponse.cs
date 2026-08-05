@@ -4,6 +4,7 @@ public class PublicacionResponse
 {
     public int Id { get; set; }
     public int UsuarioId { get; set; }
+    public string UsuarioNombre { get; set; } = null!;
     public string Titulo { get; set; } = null!;
     public string Descripcion { get; set; } = null!;
     public int CategoriaCargaId { get; set; }

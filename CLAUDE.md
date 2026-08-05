@@ -8,24 +8,27 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fases 0, 1 y 2 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+Fases 0 a 3 completas. Fase 0: solución .NET con Auth JWT de punta a punta
 (registro, login, refresh con rotación/revocación, detección de reuso) contra
 Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
 arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
 nativa de Windows como en el navegador. Login con Google agregado como alternativa
 a email/password (funcional, con credencial de Google Cloud ya configurada).
 
-Fases 1 y 2 (Publicaciones + Ofertas + mapa/geo) se armaron con un patrón
-Gauntlet Loop (builders + críticos de contexto fresco que corren el artefacto real,
-no un resumen) y después una pasada de arreglos dirigida a mano — ver *Cómo se
-armaron las Fases 1 y 2* para el detalle de qué encontró cada etapa. Publicaciones y
-Ofertas tienen CRUD completo, geobúsqueda por cercanía (`ST_DWithin`), la máquina de
-estados completa (`Publicada → OfertaAceptada → EnCurso → Completada / Cancelada`)
-ejercitada de punta a punta desde la UI (no solo desde la API), y mapa real con
-`flutter_map`+OSM tanto para elegir origen/destino como para explorar publicaciones
-cercanas.
+Fases 1, 2 y 3 (Publicaciones + Ofertas + mapa/geo, y Calificaciones) se armaron
+con un patrón Gauntlet Loop (builders + críticos de contexto fresco que corren el
+artefacto real, no un resumen) y después una pasada de arreglos dirigida a mano en
+cada una — ver *Cómo se armaron las Fases 1 y 2* y *Cómo se armó la Fase 3* para el
+detalle de qué encontró cada etapa. Publicaciones y Ofertas tienen CRUD completo,
+geobúsqueda por cercanía (`ST_DWithin`), la máquina de estados completa
+(`Publicada → OfertaAceptada → EnCurso → Completada / Cancelada`) ejercitada de
+punta a punta desde la UI, y mapa real con `flutter_map`+OSM tanto para elegir
+origen/destino como para explorar publicaciones cercanas. Calificaciones habilita
+un rating mutuo (1 a 5 + comentario) tras `Completada`, con reputación pública
+visible en las listas de publicaciones/ofertas (`GET /api/usuarios/{id}`) antes de
+decidir con quién hacer el flete.
 
-**Sin arrancar:** Calificaciones, panel admin, push — ver *Roadmap*.
+**Sin arrancar:** panel admin, push — ver *Roadmap*.
 
 ## Stack
 
@@ -114,10 +117,11 @@ de publicar la app.
 
 ## Modelo de datos
 
-Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/`. Publicacion y
-Oferta ya tienen su CRUD completo (`PublicacionesController`, `PublicacionService`,
-`OfertaService`) desde las Fases 1 y 2; Calificacion todavía no tiene controller ni
-service (Fase 3):
+Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/`, y todas ya
+tienen su CRUD completo (`PublicacionesController`+`PublicacionService`,
+`OfertasController`+`OfertaService`, `CalificacionesController`+`CalificacionService`,
+más `UsuariosController`+`UsuarioService` para el perfil público/reputación) desde
+las Fases 1 a 3. Sólo `Reporte` (Fase 4, panel admin) sigue sin controller ni service:
 
 - **Usuario**: cuenta única, sin distinción publicador/fletero. `Rol` (`Usuario`/`Admin`)
   como único diferenciador de permisos. `PasswordHash` es `string?`: una cuenta creada
@@ -343,6 +347,38 @@ verifican bien su propia pieza, pero la integración cruzada (¿la UI expone *to
 que el backend soporta?) solo la agarra una verificación final de punta a punta — no
 alcanza con que cada etapa apruebe por separado.
 
+## Cómo se armó la Fase 3 (Gauntlet Loop)
+
+Mismo patrón, esta vez más chico (3 etapas en vez de 5, proporcional a que es una
+sola entidad nueva): Backend Calificaciones+reputación, Flutter Calificaciones, y
+verificación final. 5 agentes / ~523k tokens / ~46 min. Las dos primeras etapas
+aprobaron a la primera ronda.
+
+La verificación final volvió a encontrar el **mismo tipo de hueco que en Fases 1+2**,
+esta vez interactuando con Chrome real vía DevTools Protocol (clicks reales, no
+simulados): el backend permitía perfectamente que el fletero (oferente aceptado)
+calificara al dueño, pero la app no tenía **ningún camino de navegación** para que el
+fletero volviera a una publicación una vez que dejaba de estar `Publicada` — "Mis
+publicaciones" filtra por dueño, "Explorar" y el mapa filtran a `Publicada`, y no
+existía ninguna pantalla "Mis ofertas" ni el endpoint que la sustente. La única forma
+en que el crítico logró que el fletero calificara fue tipeando la URL a mano dentro
+de la misma sesión — impracticable para un usuario real. También encontró que la
+reputación de un usuario quedaba cacheada indefinidamente dentro de la misma sesión
+(`usuarioPublicoProvider`, un `FutureProvider.family` de Riverpod) sin invalidarse
+después de calificar. Se arregló después a mano:
+
+- Backend: `GET /api/ofertas/mias` (ruta absoluta en `OfertasController`, sin anidar
+  bajo una publicación puntual) devuelve las ofertas del usuario logueado cruzando
+  publicaciones en cualquier estado, con `PublicacionTitulo`/`PublicacionEstado`
+  denormalizados para no pedir el detalle de cada una.
+- Flutter: tercera pestaña "Mis ofertas" en el listado, y
+  `ref.invalidate(usuarioPublicoProvider(...))` después de calificar con éxito.
+
+Segunda confirmación de la moraleja de Fases 1+2: cuando el backend soporta una
+acción de "la otra parte" de una transacción (no el dueño), conviene revisar desde el
+arranque si esa otra parte tiene algún camino de navegación real para llegar a
+ejercerla — no solo si el endpoint funciona.
+
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
@@ -350,8 +386,9 @@ alcanza con que cada etapa apruebe por separado.
   `EstadoPublicacion` (incluida cancelación) ejercitadas desde la UI, no solo la API.
 - **Fase 2 — listo.** `GET /publicaciones/cercanas?lat&lng&radioKm` con `ST_DWithin`,
   `flutter_map` para elegir origen/destino al publicar y para explorar cercanas.
-- **Fase 3 — Calificaciones.** Habilitada solo tras `Completada`, un rating por
-  dirección por publicación.
+- **Fase 3 — listo.** Calificaciones mutuas tras `Completada`, reputación pública
+  (`GET /api/usuarios/{id}`) visible en publicaciones/ofertas, pantalla "Mis ofertas"
+  para que el fletero encuentre sus publicaciones en cualquier estado.
 - **Fase 4 — Panel admin.** `Reporte` + flujo de reportar una publicación, ruta
   Flutter gateada por rol (no por plataforma — un admin puede entrar desde mobile
   también), controllers con policy `Admin`.
@@ -360,8 +397,11 @@ alcanza con que cada etapa apruebe por separado.
   únicamente (ver *Stack*).
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
-`PublicacionService`/`OfertaService` (solo hay tests triviales de salud); la vista de
-mapa de "cercanas" usa una ubicación fija (CABA) hasta que se integre `geolocator`.
+`PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService` (solo hay
+tests triviales de salud); la vista de mapa de "cercanas" usa una ubicación fija
+(CABA) hasta que se integre `geolocator`; la sesión no persiste tras un reload real
+del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
+arranque frío, ver `AuthController.build()` en `auth_providers.dart`).
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.

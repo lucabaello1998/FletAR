@@ -29,4 +29,13 @@ class OfertasApi {
     final response = await _dio.post('/publicaciones/$publicacionId/ofertas/$ofertaId/retirar');
     return Oferta.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// Ofertas que hice yo, en publicaciones de cualquier estado - es la única
+  /// forma de volver a encontrar una publicación en la que ofertaste una vez
+  /// que deja de estar Publicada (no aparece en "Explorar" ni en "Mis
+  /// publicaciones", que es sólo para el dueño).
+  Future<List<Oferta>> misOfertas() async {
+    final response = await _dio.get('/ofertas/mias');
+    return (response.data as List).map((e) => Oferta.fromJson(e as Map<String, dynamic>)).toList();
+  }
 }

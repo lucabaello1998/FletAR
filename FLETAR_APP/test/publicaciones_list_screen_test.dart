@@ -12,6 +12,7 @@ class _PublicacionesListControllerFalso extends PublicacionesListController {
         Publicacion(
           id: 1,
           usuarioId: 99,
+          usuarioNombre: 'Juan Pérez',
           titulo: 'Flete de mudanza 2 ambientes',
           descripcion: 'Necesito mover muebles de un depto a otro',
           categoriaCargaId: 1,

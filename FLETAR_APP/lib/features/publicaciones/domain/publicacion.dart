@@ -12,6 +12,7 @@ class Publicacion {
   const Publicacion({
     required this.id,
     required this.usuarioId,
+    required this.usuarioNombre,
     required this.titulo,
     required this.descripcion,
     required this.categoriaCargaId,
@@ -31,6 +32,7 @@ class Publicacion {
   factory Publicacion.fromJson(Map<String, dynamic> json) => Publicacion(
         id: json['id'] as int,
         usuarioId: json['usuarioId'] as int,
+        usuarioNombre: json['usuarioNombre'] as String,
         titulo: json['titulo'] as String,
         descripcion: json['descripcion'] as String,
         categoriaCargaId: json['categoriaCargaId'] as int,
@@ -50,6 +52,7 @@ class Publicacion {
 
   final int id;
   final int usuarioId;
+  final String usuarioNombre;
   final String titulo;
   final String descripcion;
   final int categoriaCargaId;

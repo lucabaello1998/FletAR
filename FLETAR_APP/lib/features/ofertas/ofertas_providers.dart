@@ -38,3 +38,20 @@ class OfertasDePublicacionController extends FamilyAsyncNotifier<List<Oferta>, i
     await recargar();
   }
 }
+
+final misOfertasProvider =
+    AsyncNotifierProvider<MisOfertasController, List<Oferta>>(MisOfertasController.new);
+
+/// Ofertas que hice yo, cruzando publicaciones en cualquier estado (ver
+/// OfertasApi.misOfertas). Sin esto, un usuario que ofertó y le aceptaron no
+/// tiene forma de volver a esa publicación para calificar al dueño una vez
+/// completada.
+class MisOfertasController extends AsyncNotifier<List<Oferta>> {
+  @override
+  Future<List<Oferta>> build() => ref.watch(ofertasApiProvider).misOfertas();
+
+  Future<void> recargar() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() => ref.read(ofertasApiProvider).misOfertas());
+  }
+}

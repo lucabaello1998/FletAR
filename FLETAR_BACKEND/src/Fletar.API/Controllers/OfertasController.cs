@@ -16,6 +16,13 @@ public class OfertasController(IOfertaService ofertaService) : ControllerBase
     public async Task<ActionResult<IReadOnlyList<OfertaResponse>>> Listar(int publicacionId)
         => Ok(await ofertaService.ListarPorPublicacionAsync(publicacionId));
 
+    // Ruta absoluta (~/) porque no está anidada bajo una publicación puntual:
+    // es la única forma que tiene un fletero de encontrar publicaciones donde
+    // ofertó, en cualquier estado (ver comentario en OfertaService.ListarMiasAsync).
+    [HttpGet("~/api/ofertas/mias")]
+    public async Task<ActionResult<IReadOnlyList<OfertaResponse>>> ListarMias()
+        => Ok(await ofertaService.ListarMiasAsync(this.UsuarioIdActual()));
+
     [HttpPost("{ofertaId:int}/aceptar")]
     public async Task<ActionResult<OfertaResponse>> Aceptar(int publicacionId, int ofertaId)
         => Ok(await ofertaService.AceptarAsync(publicacionId, ofertaId, this.UsuarioIdActual()));

@@ -34,7 +34,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
         db.Publicaciones.Add(publicacion);
         await db.SaveChangesAsync();
 
-        return mapper.Map<PublicacionResponse>(publicacion);
+        return await MapearConNombreAsync(publicacion);
     }
 
     public async Task<IReadOnlyList<PublicacionResponse>> ListarAsync(int page, int pageSize, string? estado, int? usuarioId = null)
@@ -69,13 +69,13 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
             .Take(pageSize)
             .ToListAsync();
 
-        return mapper.Map<List<PublicacionResponse>>(publicaciones);
+        return await MapearConNombresAsync(publicaciones);
     }
 
     public async Task<PublicacionResponse> ObtenerPorIdAsync(int id)
     {
         var publicacion = await BuscarOFallarAsync(id);
-        return mapper.Map<PublicacionResponse>(publicacion);
+        return await MapearConNombreAsync(publicacion);
     }
 
     public async Task<IReadOnlyList<PublicacionResponse>> ListarCercanasAsync(double lat, double lng, double radioKm)
@@ -89,7 +89,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
             .OrderBy(p => p.Origen.Distance(puntoBusqueda))
             .ToListAsync();
 
-        return mapper.Map<List<PublicacionResponse>>(publicaciones);
+        return await MapearConNombresAsync(publicaciones);
     }
 
     public async Task<PublicacionResponse> EditarAsync(int id, int usuarioId, PublicacionUpdateRequest request)
@@ -111,7 +111,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
 
         await db.SaveChangesAsync();
 
-        return mapper.Map<PublicacionResponse>(publicacion);
+        return await MapearConNombreAsync(publicacion);
     }
 
     public async Task CancelarAsync(int id, int usuarioId)
@@ -147,6 +147,35 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
     private async Task<Publicacion> BuscarOFallarAsync(int id)
         => await db.Publicaciones.SingleOrDefaultAsync(p => p.Id == id)
             ?? throw new KeyNotFoundException("La publicación indicada no existe.");
+
+    // UsuarioNombre se denormaliza acá (no viene de una navegación de EF: los models
+    // de DAL no tienen navigation properties) con un único lookup por lote sobre los
+    // usuarios de la página ya recortada, nunca una query por fila.
+    private async Task<PublicacionResponse> MapearConNombreAsync(Publicacion publicacion)
+    {
+        var response = mapper.Map<PublicacionResponse>(publicacion);
+        response.UsuarioNombre = await db.Usuarios
+            .Where(u => u.Id == publicacion.UsuarioId)
+            .Select(u => u.Nombre)
+            .SingleOrDefaultAsync() ?? string.Empty;
+        return response;
+    }
+
+    private async Task<IReadOnlyList<PublicacionResponse>> MapearConNombresAsync(List<Publicacion> publicaciones)
+    {
+        var responses = mapper.Map<List<PublicacionResponse>>(publicaciones);
+
+        var usuarioIds = publicaciones.Select(p => p.UsuarioId).Distinct().ToList();
+        var nombresPorId = await db.Usuarios
+            .Where(u => usuarioIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Nombre })
+            .ToDictionaryAsync(u => u.Id, u => u.Nombre);
+
+        foreach (var response in responses)
+            response.UsuarioNombre = nombresPorId.GetValueOrDefault(response.UsuarioId, string.Empty);
+
+        return responses;
+    }
 
     private static void ValidarDuenioYEstadoEditable(Publicacion publicacion, int usuarioId)
     {
