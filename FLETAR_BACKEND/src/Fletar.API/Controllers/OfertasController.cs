@@ -14,7 +14,7 @@ public class OfertasController(IOfertaService ofertaService) : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<OfertaResponse>>> Listar(int publicacionId)
-        => Ok(await ofertaService.ListarPorPublicacionAsync(publicacionId));
+        => Ok(await ofertaService.ListarPorPublicacionAsync(publicacionId, this.UsuarioIdActual()));
 
     // Ruta absoluta (~/) porque no está anidada bajo una publicación puntual:
     // es la única forma que tiene un fletero de encontrar publicaciones donde

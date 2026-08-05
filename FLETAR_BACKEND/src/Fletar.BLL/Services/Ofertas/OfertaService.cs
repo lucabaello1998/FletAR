@@ -40,12 +40,19 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         return await MapearConNombreAsync(oferta);
     }
 
-    public async Task<IReadOnlyList<OfertaResponse>> ListarPorPublicacionAsync(int publicacionId)
+    public async Task<IReadOnlyList<OfertaResponse>> ListarPorPublicacionAsync(int publicacionId, int usuarioIdActual)
     {
-        await BuscarPublicacionOFallarAsync(publicacionId);
+        var publicacion = await BuscarPublicacionOFallarAsync(publicacionId);
 
-        var ofertas = await db.Ofertas
-            .Where(o => o.PublicacionId == publicacionId)
+        var query = db.Ofertas.Where(o => o.PublicacionId == publicacionId);
+
+        // Sólo el dueño de la publicación puede ver el listado completo (Monto y
+        // Mensaje de cada oferente). A quien no es dueño le devolvemos como
+        // máximo su propia oferta.
+        if (publicacion.UsuarioId != usuarioIdActual)
+            query = query.Where(o => o.UsuarioId == usuarioIdActual);
+
+        var ofertas = await query
             .OrderByDescending(o => o.FechaOferta)
             .ToListAsync();
 

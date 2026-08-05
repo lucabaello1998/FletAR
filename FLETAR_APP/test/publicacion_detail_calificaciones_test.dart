@@ -89,6 +89,15 @@ class _CalificacionesFalsas extends CalificacionesDePublicacionController {
 void main() {
   testWidgets('Publicación Completada sin calificar muestra el formulario para calificar',
       (WidgetTester tester) async {
+    // El detalle ahora incluye un mapa de ubicación además del texto de
+    // dirección (ver _MapaUbicacionPublicacion), lo que empuja la sección de
+    // Calificaciones fuera del viewport por defecto de flutter_test (800x600)
+    // - sin agrandar la superficie, el ListView ni siquiera monta esos
+    // widgets (lazy dentro del cache extent) y find.text() no los encuentra.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: _overridesComunes(calificaciones: []),
@@ -114,6 +123,10 @@ void main() {
       comentario: 'Todo muy bien',
       fechaCalificacion: DateTime.utc(2026, 1, 2),
     );
+
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
 
     await tester.pumpWidget(
       ProviderScope(

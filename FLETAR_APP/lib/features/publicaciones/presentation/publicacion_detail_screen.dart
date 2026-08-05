@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart' as ll;
 
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
@@ -8,6 +11,7 @@ import '../../calificaciones/calificaciones_providers.dart';
 import '../../calificaciones/domain/calificacion.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
+import '../../ofertas/presentation/oferta_estado.dart';
 import '../../reportes/reportes_providers.dart';
 import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../../usuarios/usuarios_providers.dart';
@@ -85,6 +89,10 @@ class _PublicacionDetailScreenState extends ConsumerState<PublicacionDetailScree
     } finally {
       if (mounted) setState(() => _ofertaEnProcesoId = null);
     }
+  }
+
+  void _editarPublicacion(Publicacion publicacion) {
+    context.push('/publicaciones/${publicacion.id}/editar', extra: publicacion);
   }
 
   Future<void> _cancelarPublicacion() async {
@@ -223,6 +231,7 @@ class _PublicacionDetailScreenState extends ConsumerState<PublicacionDetailScree
           onEnviarOferta: _enviarOferta,
           onAceptarOferta: _aceptarOferta,
           onRetirarOferta: _retirarOferta,
+          onEditar: () => _editarPublicacion(publicacion),
           onCancelar: _cancelarPublicacion,
           onIniciar: _iniciarPublicacion,
           onCompletar: _completarPublicacion,
@@ -264,6 +273,7 @@ class _DetalleCargado extends ConsumerWidget {
     required this.onEnviarOferta,
     required this.onAceptarOferta,
     required this.onRetirarOferta,
+    required this.onEditar,
     required this.onCancelar,
     required this.onIniciar,
     required this.onCompletar,
@@ -279,6 +289,7 @@ class _DetalleCargado extends ConsumerWidget {
   final Future<void> Function() onEnviarOferta;
   final Future<void> Function(int ofertaId) onAceptarOferta;
   final Future<void> Function(int ofertaId) onRetirarOferta;
+  final VoidCallback onEditar;
   final Future<void> Function() onCancelar;
   final Future<void> Function() onIniciar;
   final Future<void> Function() onCompletar;
@@ -324,6 +335,7 @@ class _DetalleCargado extends ConsumerWidget {
             _AccionesDueno(
               estado: publicacion.estado,
               enProceso: accionEnProceso,
+              onEditar: onEditar,
               onCancelar: onCancelar,
               onIniciar: onIniciar,
               onCompletar: onCompletar,
@@ -354,6 +366,9 @@ class _DetalleCargado extends ConsumerWidget {
           _filaDato(context, Icons.place_outlined, publicacion.origenDireccionTexto),
           if (publicacion.destinoDireccionTexto != null)
             _filaDato(context, Icons.flag_outlined, publicacion.destinoDireccionTexto!),
+          const SizedBox(height: 8),
+          _MapaUbicacionPublicacion(publicacion: publicacion),
+          const SizedBox(height: 16),
           _filaDato(context, Icons.event_outlined, 'Publicada el ${_formatearFecha(publicacion.fechaPublicacion)}'),
           if (publicacion.fechaDeseada != null)
             _filaDato(context, Icons.schedule_outlined, 'Deseada para ${_formatearFecha(publicacion.fechaDeseada!)}'),
@@ -462,6 +477,69 @@ class _DetalleCargado extends ConsumerWidget {
   }
 }
 
+/// Mapa de solo lectura con la ubicación de una Publicación: pin de origen
+/// (obligatorio) y, si existe, pin de destino en otro color/ícono para
+/// diferenciarlo. A diferencia de _MapaSeleccionOrigen (create screen), acá
+/// no hay onTap - el punto ya está fijado, esto es solo para visualizarlo.
+class _MapaUbicacionPublicacion extends StatelessWidget {
+  const _MapaUbicacionPublicacion({required this.publicacion});
+
+  final Publicacion publicacion;
+
+  @override
+  Widget build(BuildContext context) {
+    final origen = ll.LatLng(publicacion.latitud, publicacion.longitud);
+    final destinoLat = publicacion.destinoLatitud;
+    final destinoLng = publicacion.destinoLongitud;
+    final destino = (destinoLat != null && destinoLng != null) ? ll.LatLng(destinoLat, destinoLng) : null;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 220,
+        child: FlutterMap(
+          options: MapOptions(
+            initialCenter: origen,
+            initialZoom: 13,
+            // Con destino, encuadra la cámara para que ambos pines queden
+            // visibles; sin destino, alcanza con centrar en el origen.
+            initialCameraFit: destino == null
+                ? null
+                : CameraFit.coordinates(
+                    coordinates: [origen, destino],
+                    padding: const EdgeInsets.all(40),
+                    maxZoom: 15,
+                  ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'ar.fletar.app',
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: origen,
+                  width: 40,
+                  height: 40,
+                  child: const Icon(Icons.location_pin, color: FletarColors.primary, size: 40),
+                ),
+                if (destino != null)
+                  Marker(
+                    point: destino,
+                    width: 36,
+                    height: 36,
+                    child: const Icon(Icons.flag, color: FletarColors.secondary, size: 32),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Botones de la máquina de estados que solo el dueño de la publicación ve:
 /// Publicada -> Cancelada, OfertaAceptada -> EnCurso, EnCurso -> Completada.
 /// Cada estado muestra a lo sumo un botón (las transiciones son excluyentes).
@@ -469,6 +547,7 @@ class _AccionesDueno extends StatelessWidget {
   const _AccionesDueno({
     required this.estado,
     required this.enProceso,
+    required this.onEditar,
     required this.onCancelar,
     required this.onIniciar,
     required this.onCompletar,
@@ -476,6 +555,7 @@ class _AccionesDueno extends StatelessWidget {
 
   final String estado;
   final bool enProceso;
+  final VoidCallback onEditar;
   final Future<void> Function() onCancelar;
   final Future<void> Function() onIniciar;
   final Future<void> Function() onCompletar;
@@ -490,10 +570,21 @@ class _AccionesDueno extends StatelessWidget {
     }
 
     return switch (estado) {
-      EstadoPublicacion.publicada => OutlinedButton.icon(
-          onPressed: onCancelar,
-          icon: Icon(Icons.cancel_outlined, color: FletarColors.destructive),
-          label: Text('Cancelar publicación', style: TextStyle(color: FletarColors.destructive)),
+      EstadoPublicacion.publicada => Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: onEditar,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Editar'),
+            ),
+            OutlinedButton.icon(
+              onPressed: onCancelar,
+              icon: Icon(Icons.cancel_outlined, color: FletarColors.destructive),
+              label: Text('Cancelar publicación', style: TextStyle(color: FletarColors.destructive)),
+            ),
+          ],
         ),
       EstadoPublicacion.ofertaAceptada => ElevatedButton.icon(
           onPressed: onIniciar,
@@ -564,8 +655,8 @@ class _ListaOfertas extends StatelessWidget {
                       if (oferta.mensaje != null && oferta.mensaje!.isNotEmpty) Text(oferta.mensaje!),
                       Text(_formatearFecha(oferta.fechaOferta),
                           style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
-                      Text(_etiquetaEstadoOferta(oferta.estado),
-                          style: TextStyle(color: _colorEstadoOferta(oferta.estado), fontSize: 12)),
+                      Text(etiquetaEstadoOferta(oferta.estado),
+                          style: TextStyle(color: colorEstadoOferta(oferta.estado), fontSize: 12)),
                     ],
                   ),
                   trailing: _trailingOferta(oferta),
@@ -600,35 +691,6 @@ String _formatearFecha(DateTime fecha) {
   final hora = local.hour.toString().padLeft(2, '0');
   final minuto = local.minute.toString().padLeft(2, '0');
   return '$dia/$mes/${local.year} $hora:$minuto';
-}
-
-String _etiquetaEstadoOferta(String estado) {
-  switch (estado) {
-    case EstadoOferta.pendiente:
-      return 'Pendiente';
-    case EstadoOferta.aceptada:
-      return 'Aceptada';
-    case EstadoOferta.rechazada:
-      return 'Rechazada';
-    case EstadoOferta.retirada:
-      return 'Retirada';
-    default:
-      return estado;
-  }
-}
-
-Color _colorEstadoOferta(String estado) {
-  switch (estado) {
-    case EstadoOferta.pendiente:
-      return FletarColors.warning;
-    case EstadoOferta.aceptada:
-      return FletarColors.success;
-    case EstadoOferta.rechazada:
-    case EstadoOferta.retirada:
-      return FletarColors.destructive;
-    default:
-      return FletarColors.mutedForeground;
-  }
 }
 
 /// Busca en la lista de ofertas ya cargada cuál es la aceptada, para saber

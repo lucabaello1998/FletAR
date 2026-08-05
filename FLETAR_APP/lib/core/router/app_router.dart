@@ -5,6 +5,7 @@ import '../../features/admin/presentation/admin_home_screen.dart';
 import '../../features/auth/auth_providers.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
+import '../../features/publicaciones/domain/publicacion.dart';
 import '../../features/publicaciones/presentation/publicacion_create_screen.dart';
 import '../../features/publicaciones/presentation/publicacion_detail_screen.dart';
 import '../../features/publicaciones/presentation/publicaciones_list_screen.dart';
@@ -42,6 +43,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
           return PublicacionDetailScreen(publicacionId: id);
+        },
+      ),
+      GoRoute(
+        path: '/publicaciones/:id/editar',
+        builder: (context, state) {
+          final publicacion = state.extra as Publicacion?;
+          if (publicacion == null) {
+            // Sin la publicación en `extra` (por ej. una recarga del navegador
+            // en web, que pierde ese estado en memoria) no hay datos para
+            // precargar el formulario - volvemos al detalle en vez de abrir
+            // "Editar" a ciegas y arriesgar que se confunda con "Crear".
+            final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+            return PublicacionDetailScreen(publicacionId: id);
+          }
+          return PublicacionCreateScreen(publicacionAEditar: publicacion);
         },
       ),
       GoRoute(path: '/admin', builder: (context, state) => const AdminHomeScreen()),

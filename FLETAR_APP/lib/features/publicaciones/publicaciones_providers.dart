@@ -77,6 +77,49 @@ class PublicacionDetailController extends FamilyAsyncNotifier<Publicacion, int> 
   }
 }
 
+final publicacionEditControllerProvider =
+    AsyncNotifierProvider.family<PublicacionEditController, Publicacion?, int>(
+        PublicacionEditController.new);
+
+/// Estado del formulario de edición (PUT /publicaciones/{id}): análogo a
+/// PublicacionCreateController, pero con la publicación existente como
+/// argumento de familia - el backend solo lo permite al dueño mientras la
+/// publicación sigue en estado Publicada.
+class PublicacionEditController extends FamilyAsyncNotifier<Publicacion?, int> {
+  @override
+  Future<Publicacion?> build(int arg) async => null;
+
+  Future<void> editar({
+    required String titulo,
+    required String descripcion,
+    required int categoriaCargaId,
+    int? tipoVehiculoSugeridoId,
+    required double latitud,
+    required double longitud,
+    required String origenDireccionTexto,
+    double? destinoLatitud,
+    double? destinoLongitud,
+    String? destinoDireccionTexto,
+    DateTime? fechaDeseada,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() => ref.read(publicacionesApiProvider).editar(
+          arg,
+          titulo: titulo,
+          descripcion: descripcion,
+          categoriaCargaId: categoriaCargaId,
+          tipoVehiculoSugeridoId: tipoVehiculoSugeridoId,
+          latitud: latitud,
+          longitud: longitud,
+          origenDireccionTexto: origenDireccionTexto,
+          destinoLatitud: destinoLatitud,
+          destinoLongitud: destinoLongitud,
+          destinoDireccionTexto: destinoDireccionTexto,
+          fechaDeseada: fechaDeseada,
+        ));
+  }
+}
+
 /// Ubicación de ejemplo usada para la vista de mapa de "publicaciones
 /// cercanas" (CABA) - queda fija hasta que se incorpore geolocator en una
 /// pasada futura.

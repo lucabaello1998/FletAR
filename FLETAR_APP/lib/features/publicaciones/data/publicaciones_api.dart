@@ -58,6 +58,36 @@ class PublicacionesApi {
     return Publicacion.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<Publicacion> editar(
+    int id, {
+    required String titulo,
+    required String descripcion,
+    required int categoriaCargaId,
+    int? tipoVehiculoSugeridoId,
+    required double latitud,
+    required double longitud,
+    required String origenDireccionTexto,
+    double? destinoLatitud,
+    double? destinoLongitud,
+    String? destinoDireccionTexto,
+    DateTime? fechaDeseada,
+  }) async {
+    final response = await _dio.put('/publicaciones/$id', data: {
+      'titulo': titulo,
+      'descripcion': descripcion,
+      'categoriaCargaId': categoriaCargaId,
+      'tipoVehiculoSugeridoId': tipoVehiculoSugeridoId,
+      'latitud': latitud,
+      'longitud': longitud,
+      'origenDireccionTexto': origenDireccionTexto,
+      'destinoLatitud': destinoLatitud,
+      'destinoLongitud': destinoLongitud,
+      'destinoDireccionTexto': destinoDireccionTexto,
+      'fechaDeseada': fechaDeseada?.toIso8601String(),
+    });
+    return Publicacion.fromJson(response.data as Map<String, dynamic>);
+  }
+
   Future<List<Publicacion>> cercanas({
     required double lat,
     required double lng,

@@ -6,13 +6,20 @@ import 'package:latlong2/latlong.dart' as ll;
 
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
+import '../domain/publicacion.dart';
 import '../publicaciones_providers.dart';
 
 /// Punto inicial del mapa cuando todavía no se tocó ningún lugar: Buenos Aires.
 const _puntoInicialBuenosAires = ll.LatLng(-34.6037, -58.3816);
 
 class PublicacionCreateScreen extends ConsumerStatefulWidget {
-  const PublicacionCreateScreen({super.key});
+  const PublicacionCreateScreen({this.publicacionAEditar, super.key});
+
+  /// Si no es null, la pantalla queda en modo edición sobre esta publicación
+  /// (PUT) en vez de crear una nueva (POST) - mismo formulario, precargado.
+  /// Navegan para acá con esto los botones "Editar" de
+  /// publicacion_detail_screen.dart, vía `extra` de go_router.
+  final Publicacion? publicacionAEditar;
 
   @override
   ConsumerState<PublicacionCreateScreen> createState() => _PublicacionCreateScreenState();
@@ -31,6 +38,30 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
   bool _tieneDestino = false;
   ll.LatLng? _destinoSeleccionado;
   DateTime? _fechaDeseada;
+
+  bool get _esEdicion => widget.publicacionAEditar != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final publicacion = widget.publicacionAEditar;
+    if (publicacion == null) return;
+
+    _tituloController.text = publicacion.titulo;
+    _descripcionController.text = publicacion.descripcion;
+    _direccionController.text = publicacion.origenDireccionTexto;
+    _direccionDestinoController.text = publicacion.destinoDireccionTexto ?? '';
+    _categoriaCargaId = publicacion.categoriaCargaId;
+    _tipoVehiculoSugeridoId = publicacion.tipoVehiculoSugeridoId;
+    _origenSeleccionado = ll.LatLng(publicacion.latitud, publicacion.longitud);
+    final destinoLat = publicacion.destinoLatitud;
+    final destinoLng = publicacion.destinoLongitud;
+    if (destinoLat != null && destinoLng != null) {
+      _tieneDestino = true;
+      _destinoSeleccionado = ll.LatLng(destinoLat, destinoLng);
+    }
+    _fechaDeseada = publicacion.fechaDeseada;
+  }
 
   @override
   void dispose() {
@@ -68,46 +99,88 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
       return;
     }
 
-    await ref.read(publicacionCreateControllerProvider.notifier).crear(
-          titulo: _tituloController.text.trim(),
-          descripcion: _descripcionController.text.trim(),
-          categoriaCargaId: _categoriaCargaId!,
-          tipoVehiculoSugeridoId: _tipoVehiculoSugeridoId,
-          latitud: origen.latitude,
-          longitud: origen.longitude,
-          origenDireccionTexto: _direccionController.text.trim(),
-          destinoLatitud: _tieneDestino ? destino!.latitude : null,
-          destinoLongitud: _tieneDestino ? destino!.longitude : null,
-          destinoDireccionTexto:
-              _tieneDestino && _direccionDestinoController.text.trim().isNotEmpty
-                  ? _direccionDestinoController.text.trim()
-                  : null,
-          fechaDeseada: _fechaDeseada,
-        );
+    final destinoLatitud = _tieneDestino ? destino!.latitude : null;
+    final destinoLongitud = _tieneDestino ? destino!.longitude : null;
+    final destinoDireccionTexto =
+        _tieneDestino && _direccionDestinoController.text.trim().isNotEmpty
+            ? _direccionDestinoController.text.trim()
+            : null;
+
+    if (_esEdicion) {
+      await ref.read(publicacionEditControllerProvider(widget.publicacionAEditar!.id).notifier).editar(
+            titulo: _tituloController.text.trim(),
+            descripcion: _descripcionController.text.trim(),
+            categoriaCargaId: _categoriaCargaId!,
+            tipoVehiculoSugeridoId: _tipoVehiculoSugeridoId,
+            latitud: origen.latitude,
+            longitud: origen.longitude,
+            origenDireccionTexto: _direccionController.text.trim(),
+            destinoLatitud: destinoLatitud,
+            destinoLongitud: destinoLongitud,
+            destinoDireccionTexto: destinoDireccionTexto,
+            fechaDeseada: _fechaDeseada,
+          );
+    } else {
+      await ref.read(publicacionCreateControllerProvider.notifier).crear(
+            titulo: _tituloController.text.trim(),
+            descripcion: _descripcionController.text.trim(),
+            categoriaCargaId: _categoriaCargaId!,
+            tipoVehiculoSugeridoId: _tipoVehiculoSugeridoId,
+            latitud: origen.latitude,
+            longitud: origen.longitude,
+            origenDireccionTexto: _direccionController.text.trim(),
+            destinoLatitud: destinoLatitud,
+            destinoLongitud: destinoLongitud,
+            destinoDireccionTexto: destinoDireccionTexto,
+            fechaDeseada: _fechaDeseada,
+          );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final createState = ref.watch(publicacionCreateControllerProvider);
     final categoriasState = ref.watch(categoriasCargaProvider);
     final tiposVehiculoState = ref.watch(tiposVehiculoProvider);
 
-    ref.listen(publicacionCreateControllerProvider, (previo, actual) {
-      if (actual.hasError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(mensajeDeError(actual.error!))),
-        );
-        return;
-      }
-      if (actual.valueOrNull != null && previo?.valueOrNull != actual.valueOrNull) {
-        ref.read(publicacionesListProvider.notifier).recargar();
-        ref.read(misPublicacionesProvider.notifier).recargar();
-        context.pop();
-      }
-    });
+    void onExito() {
+      ref.read(publicacionesListProvider.notifier).recargar();
+      ref.read(misPublicacionesProvider.notifier).recargar();
+      context.pop();
+    }
+
+    void onError(Object error) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensajeDeError(error))));
+    }
+
+    final AsyncValue<Publicacion?> createState;
+    if (_esEdicion) {
+      final publicacionId = widget.publicacionAEditar!.id;
+      createState = ref.watch(publicacionEditControllerProvider(publicacionId));
+      ref.listen(publicacionEditControllerProvider(publicacionId), (previo, actual) {
+        if (actual.hasError) {
+          onError(actual.error!);
+          return;
+        }
+        if (actual.valueOrNull != null && previo?.valueOrNull != actual.valueOrNull) {
+          ref.read(publicacionDetailProvider(publicacionId).notifier).recargar();
+          onExito();
+        }
+      });
+    } else {
+      createState = ref.watch(publicacionCreateControllerProvider);
+      ref.listen(publicacionCreateControllerProvider, (previo, actual) {
+        if (actual.hasError) {
+          onError(actual.error!);
+          return;
+        }
+        if (actual.valueOrNull != null && previo?.valueOrNull != actual.valueOrNull) {
+          onExito();
+        }
+      });
+    }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nueva publicación')),
+      appBar: AppBar(title: Text(_esEdicion ? 'Editar publicación' : 'Nueva publicación')),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -248,7 +321,7 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Text('Publicar'),
+                          : Text(_esEdicion ? 'Guardar cambios' : 'Publicar'),
                     ),
                   ],
                 ),

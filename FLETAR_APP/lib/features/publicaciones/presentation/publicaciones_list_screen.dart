@@ -9,6 +9,7 @@ import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
+import '../../ofertas/presentation/oferta_estado.dart';
 import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../domain/publicacion.dart';
 import '../publicaciones_providers.dart';
@@ -254,7 +255,23 @@ class _ListaMisOfertas extends ConsumerWidget {
                   Text('Tu oferta: \$${oferta.monto.toStringAsFixed(2)}',
                       style: const TextStyle(color: FletarColors.mutedForeground)),
                   const SizedBox(height: 8),
-                  EstadoPublicacionBadge(estado: oferta.publicacionEstado),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Estado de tu oferta: ',
+                          style: TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
+                      EstadoOfertaBadge(estado: oferta.estado),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Publicación: ',
+                          style: TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
+                      EstadoPublicacionBadge(estado: oferta.publicacionEstado),
+                    ],
+                  ),
                 ],
               ),
             ),

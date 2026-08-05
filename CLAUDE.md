@@ -23,7 +23,9 @@ detalle de qué encontró cada etapa. Publicaciones y Ofertas tienen CRUD comple
 geobúsqueda por cercanía (`ST_DWithin`), la máquina de estados completa
 (`Publicada → OfertaAceptada → EnCurso → Completada / Cancelada`) ejercitada de
 punta a punta desde la UI, y mapa real con `flutter_map`+OSM tanto para elegir
-origen/destino como para explorar publicaciones cercanas. Calificaciones habilita
+origen/destino como para explorar publicaciones cercanas, además de en el propio
+detalle de una publicación (solo lectura, pin de origen y de destino si tiene —
+ver *Cómo se hizo la iteración de mejora continua post-Fase 5*). Calificaciones habilita
 un rating mutuo (1 a 5 + comentario) tras `Completada`, con reputación pública
 visible en las listas de publicaciones/ofertas (`GET /api/usuarios/{id}`) antes de
 decidir con quién hacer el flete.
@@ -409,6 +411,57 @@ acción de "la otra parte" de una transacción (no el dueño), conviene revisar 
 arranque si esa otra parte tiene algún camino de navegación real para llegar a
 ejercerla — no solo si el endpoint funciona.
 
+## Cómo se hizo la iteración de mejora continua post-Fase 5 (Gauntlet Loop)
+
+Con las 5 fases del MVP completas, se pidió agregar mapa+dirección al detalle de
+una publicación y después una pasada de mejora continua con Gauntlet Loop "hasta
+donde tenga sentido". 13 agentes / ~1.49M tokens / ~99 min, en cuatro etapas:
+
+1. **Mapa en el detalle** (builder + crítico): `_MapaUbicacionPublicacion` en
+   `publicacion_detail_screen.dart`, mismo patrón que `_MapaSeleccionOrigen`/
+   `_MapaPublicacionesCercanas` (TileLayer OSM), pin de origen siempre y de destino
+   si existe, con `CameraFit.coordinates` para que ambos queden visibles. Aprobado
+   a la primera ronda, con verificación visual real contra el emulador Android.
+2. **Búsqueda de mejoras** (4 lentes en paralelo, sólo lectura — sin implementar
+   nada todavía): navegación/UX, seguridad, correctitud/máquina-de-estados, calidad
+   de código. Encontraron **24 hallazgos** en total.
+3. **Implementación** de los 3 priorizados (los primeros `high` por orden de
+   llegada de las 4 lentes, no necesariamente los 3 más graves — ver más abajo):
+   - Faltaba **editar una publicación** desde la UI (el backend ya lo soportaba,
+     `PUT /api/publicaciones/{id}`, desde antes de esta pasada): nueva ruta
+     `/publicaciones/:id/editar`, reutiliza el formulario de creación precargado.
+   - **"Mis ofertas" mostraba un estado engañoso**: el badge era el de la
+     *publicación* (`OfertaAceptada`), no el de la *oferta propia* — un fletero
+     rechazado veía "Oferta aceptada" y podía creer que era la suya. Se separó en
+     dos badges (`oferta_estado.dart`, nuevo, compartido con el detalle).
+   - **Fix de seguridad real**: `GET /api/publicaciones/{id}/ofertas` devolvía el
+     monto y mensaje de *todos* los oferentes a cualquier usuario autenticado, no
+     solo al dueño — rompía la lógica de "oferta ciega" de un marketplace de
+     subasta. Ahora un no-dueño recibe como máximo su propia oferta.
+4. **Verificación final**: build+test de ambos lados limpio, y smoke test end-to-end
+   en el emulador ejercitando las tres cosas nuevas (mapa, editar, badges) contra
+   datos reales.
+
+**Quedaron sin implementar 21 de los 24 hallazgos** (documentados en el journal del
+workflow, no en este archivo — son demasiados para este nivel de detalle). Dos son
+`high` y vale la pena que consten acá explícitamente porque el criterio de
+priorización fue simple (los primeros 3 `high` que llegaron, no un ranking real
+de severidad) y se los quedó afuera:
+
+- **Condición de carrera en `OfertaService.AceptarAsync`**: sin concurrency token
+  ni update condicional, dos aceptaciones casi simultáneas sobre la misma
+  publicación pueden dejar dos `Oferta.Estado = Aceptada` con `Publicacion.
+  OfertaAceptadaId` apuntando a una sola — la otra queda huérfana.
+- **Refresh de token no serializado en `AuthInterceptor`** (Flutter): si varias
+  requests reciben 401 casi al mismo tiempo (típico al abrir el listado, que
+  dispara 4 providers a la vez), cada una dispara su propio `/auth/refresh`; el
+  backend revoca toda la familia ante el reuso del token viejo, y el usuario queda
+  deslogueado sin haber hecho nada malo.
+
+Moraleja nueva para la próxima pasada de mejora continua: priorizar por severidad
+real entre *todos* los hallazgos antes de elegir qué implementar, no por el orden
+de llegada de los buscadores en paralelo.
+
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
@@ -438,7 +491,11 @@ salud); la vista de mapa de "cercanas" usa una ubicación fija
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
 arranque frío, ver `AuthController.build()` en `auth_providers.dart`); notificación
 push sin acción de tap-para-navegar (llega con título/cuerpo nomás, no deep-link a
-la publicación); ícono de la app Android sigue siendo el default de Flutter.
+la publicación); ícono de la app Android sigue siendo el default de Flutter;
+condición de carrera en `OfertaService.AceptarAsync` sin concurrency token; refresh
+de token no serializado en `AuthInterceptor` (ver *Cómo se hizo la iteración de
+mejora continua post-Fase 5* para el detalle de estos dos y otros 19 hallazgos
+menores sin implementar todavía).
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.
