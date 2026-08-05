@@ -1,4 +1,5 @@
 using AutoMapper;
+using Fletar.BLL.Services.Notificaciones;
 using Fletar.DAL;
 using Fletar.DAL.Models;
 using Fletar.DTO.Ofertas;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Fletar.BLL.Services.Ofertas;
 
-public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
+public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService fcmSender) : IOfertaService
 {
     public async Task<OfertaResponse> CrearAsync(int usuarioId, int publicacionId, OfertaCreateRequest request)
     {
@@ -30,6 +31,11 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
 
         db.Ofertas.Add(oferta);
         await db.SaveChangesAsync();
+
+        await fcmSender.NotificarAsync(
+            publicacion.UsuarioId,
+            "Nueva oferta",
+            $"Recibiste una oferta de ${request.Monto} en \"{publicacion.Titulo}\".");
 
         return await MapearConNombreAsync(oferta);
     }
@@ -93,6 +99,11 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
 
         await db.SaveChangesAsync();
 
+        await fcmSender.NotificarAsync(
+            oferta.UsuarioId,
+            "¡Te aceptaron la oferta!",
+            $"Tu oferta en \"{publicacion.Titulo}\" fue aceptada.");
+
         return await MapearConNombreAsync(oferta);
     }
 
@@ -138,6 +149,16 @@ public class OfertaService(FletarDbContext db, IMapper mapper) : IOfertaService
 
         publicacion.Estado = EstadoPublicacion.Completada;
         await db.SaveChangesAsync();
+
+        var mensaje = $"\"{publicacion.Titulo}\" se completó. Ya podés calificar a la otra parte.";
+        await fcmSender.NotificarAsync(publicacion.UsuarioId, "Flete completado", mensaje);
+
+        var fleteroId = await db.Ofertas
+            .Where(o => o.Id == publicacion.OfertaAceptadaId)
+            .Select(o => o.UsuarioId)
+            .SingleOrDefaultAsync();
+        if (fleteroId != default)
+            await fcmSender.NotificarAsync(fleteroId, "Flete completado", mensaje);
     }
 
     private async Task<Publicacion> BuscarPublicacionOFallarAsync(int publicacionId)

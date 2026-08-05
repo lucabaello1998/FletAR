@@ -3,6 +3,8 @@ using Fletar.API;
 using Fletar.BLL;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Settings;
+using FirebaseAdmin;
+using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
@@ -50,7 +52,14 @@ var jwtSettings = new JwtSettings(
 
 var googleSettings = new GoogleSettings(Environment.GetEnvironmentVariable("FLETAR_GOOGLE_CLIENT_ID"));
 
-builder.Services.AddBusinessLayer(connectionString, jwtSettings, googleSettings);
+// GOOGLE_APPLICATION_CREDENTIALS es el nombre estándar que usan las Application
+// Default Credentials de Google - GoogleCredential.GetApplicationDefault() lo lee
+// solo, no hace falta pasarle la ruta a mano.
+var firebaseSettings = new FirebaseSettings(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS"));
+if (firebaseSettings.EstaConfigurado)
+    FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
+
+builder.Services.AddBusinessLayer(connectionString, jwtSettings, googleSettings, firebaseSettings);
 
 // Orígenes del cliente web separados por coma (p. ej. https://app.fletar.ar).
 // Vacío por defecto: en producción hay que setear FLETAR_CORS_ORIGENES a mano,

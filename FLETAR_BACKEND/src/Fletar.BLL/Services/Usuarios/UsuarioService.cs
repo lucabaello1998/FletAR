@@ -91,6 +91,13 @@ public class UsuarioService(FletarDbContext db) : IUsuarioService
         await db.SaveChangesAsync();
     }
 
+    public async Task RegistrarFcmTokenAsync(int id, string? token)
+    {
+        var usuario = await BuscarOFallarAsync(id);
+        usuario.FcmToken = string.IsNullOrWhiteSpace(token) ? null : token;
+        await db.SaveChangesAsync();
+    }
+
     private async Task<Usuario> BuscarOFallarAsync(int id)
         => await db.Usuarios.SingleOrDefaultAsync(u => u.Id == id)
             ?? throw new KeyNotFoundException("El usuario indicado no existe.");

@@ -16,6 +16,8 @@ FLETAR_APP/android/.gradle/
 FLETAR_APP/android/local.properties
 FLETAR_APP/ios/Pods/
 FLETAR_APP/ios/.symlinks/
+FLETAR_APP/android/app/google-services.json
+FLETAR_APP/ios/Runner/GoogleService-Info.plist
 FLETAR_APP/**/*.g.dart
 FLETAR_APP/**/*.freezed.dart
 

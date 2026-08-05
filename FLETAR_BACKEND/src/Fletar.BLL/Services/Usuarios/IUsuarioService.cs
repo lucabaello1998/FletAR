@@ -8,4 +8,5 @@ public interface IUsuarioService
     Task<IReadOnlyList<UsuarioAdminResponse>> ListarAdminAsync(int page, int pageSize, string? busqueda);
     Task DesactivarAsync(int id);
     Task ReactivarAsync(int id);
+    Task RegistrarFcmTokenAsync(int id, string? token);
 }

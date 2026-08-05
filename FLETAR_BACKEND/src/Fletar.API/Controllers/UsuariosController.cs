@@ -15,4 +15,13 @@ public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<UsuarioPublicoResponse>> ObtenerPorId(int id)
         => Ok(await usuarioService.ObtenerPerfilPublicoAsync(id));
+
+    // Alcance mobile únicamente (ver CLAUDE.md, Stack): el cliente manda null/vacío
+    // para des-registrar el token al desloguearse en ese dispositivo.
+    [HttpPut("me/fcm-token")]
+    public async Task<IActionResult> RegistrarFcmToken(RegistrarFcmTokenRequest request)
+    {
+        await usuarioService.RegistrarFcmTokenAsync(this.UsuarioIdActual(), request.Token);
+        return NoContent();
+    }
 }

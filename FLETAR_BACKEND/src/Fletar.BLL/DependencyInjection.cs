@@ -2,6 +2,7 @@ using Fletar.BLL.Helpers;
 using Fletar.BLL.Services.Admin;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Services.Calificaciones;
+using Fletar.BLL.Services.Notificaciones;
 using Fletar.BLL.Services.Ofertas;
 using Fletar.BLL.Services.Publicaciones;
 using Fletar.BLL.Services.Reportes;
@@ -15,11 +16,13 @@ namespace Fletar.BLL;
 public static class DependencyInjection
 {
     public static IServiceCollection AddBusinessLayer(
-        this IServiceCollection services, string connectionString, JwtSettings jwtSettings, GoogleSettings googleSettings)
+        this IServiceCollection services, string connectionString, JwtSettings jwtSettings,
+        GoogleSettings googleSettings, FirebaseSettings firebaseSettings)
     {
         services.AddDataLayer(connectionString);
         services.AddSingleton(jwtSettings);
         services.AddSingleton(googleSettings);
+        services.AddSingleton(firebaseSettings);
         services.AddAutoMapper(_ => { }, typeof(DependencyInjection).Assembly);
 
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
@@ -31,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IUsuarioService, UsuarioService>();
         services.AddScoped<IReporteService, ReporteService>();
         services.AddScoped<IAdminService, AdminService>();
+        services.AddScoped<IFcmSenderService, FcmSenderService>();
 
         return services;
     }

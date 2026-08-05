@@ -1,10 +1,15 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/network/dio_client.dart';
 import '../../core/network/token_storage.dart';
+import '../../core/notificaciones/fcm_service.dart';
+import '../../core/scaffold_messenger_key.dart';
+import '../usuarios/data/usuarios_api.dart';
 import 'data/auth_api.dart';
 import 'domain/usuario.dart';
 
@@ -24,20 +29,60 @@ const googleClientId = String.fromEnvironment('FLETAR_GOOGLE_CLIENT_ID');
 
 class AuthController extends AsyncNotifier<Usuario?> {
   StreamSubscription<GoogleSignInAuthenticationEvent>? _googleEventsSub;
+  StreamSubscription<String>? _fcmTokenRefreshSub;
+  StreamSubscription<RemoteMessage>? _fcmMessageSub;
+  final _fcmService = FcmService();
 
   @override
   Future<Usuario?> build() async {
-    ref.onDispose(() => _googleEventsSub?.cancel());
+    ref.onDispose(() {
+      _googleEventsSub?.cancel();
+      _fcmTokenRefreshSub?.cancel();
+      _fcmMessageSub?.cancel();
+    });
     // No se espera este future: si Google Sign-In no está configurado o falla
     // al inicializar, el resto del login (email/password) no tiene que verse
     // afectado.
     unawaited(_inicializarGoogleSignIn());
+    unawaited(_inicializarFcm());
 
     // La sesión no persiste entre reinicios todavía: falta un endpoint
     // `/usuarios/me` (Fase 1) contra el cual validar el access token guardado
     // en el arranque frío. Los tokens sí quedan en secure storage, así que
     // agregar esa validación después no requiere tocar `TokenStorage`.
     return null;
+  }
+
+  /// Alcance mobile únicamente (ver CLAUDE.md, Stack) - no hace nada en
+  /// desktop/web (`soportaPush` da false ahí).
+  Future<void> _inicializarFcm() async {
+    try {
+      await _fcmService.inicializar();
+      _fcmTokenRefreshSub = _fcmService.onTokenRefresh.listen((token) {
+        UsuariosApi(ref.read(dioProvider)).registrarFcmToken(token).catchError((_) {});
+      });
+      // Foreground: FCM no muestra la notificación sola (a diferencia de
+      // background/terminated, que lo hace el sistema operativo) - sin esto
+      // una notificación que llega con la app abierta no se ve en ningún lado.
+      _fcmMessageSub = FirebaseMessaging.onMessage.listen((mensaje) {
+        final notificacion = mensaje.notification;
+        if (notificacion == null) return;
+        scaffoldMessengerKey.currentState?.showSnackBar(
+          SnackBar(content: Text('${notificacion.title}: ${notificacion.body}')),
+        );
+      });
+    } catch (_) {
+      // Firebase mal configurado en este dispositivo - el resto de la app sigue.
+    }
+  }
+
+  Future<void> _registrarFcmTokenSiCorresponde() async {
+    try {
+      final token = await _fcmService.pedirPermisoYObtenerToken();
+      if (token != null) await UsuariosApi(ref.read(dioProvider)).registrarFcmToken(token);
+    } catch (_) {
+      // Push es un plus, no un requisito - mismo criterio que Google Sign-In.
+    }
   }
 
   Future<void> _inicializarGoogleSignIn() async {
@@ -82,6 +127,7 @@ class AuthController extends AsyncNotifier<Usuario?> {
             accessToken: sesion.accessToken,
             refreshToken: sesion.refreshToken,
           );
+      await _registrarFcmTokenSiCorresponde();
       return sesion.usuario;
     });
   }
@@ -104,6 +150,7 @@ class AuthController extends AsyncNotifier<Usuario?> {
             accessToken: sesion.accessToken,
             refreshToken: sesion.refreshToken,
           );
+      await _registrarFcmTokenSiCorresponde();
       return sesion.usuario;
     });
   }
@@ -116,6 +163,7 @@ class AuthController extends AsyncNotifier<Usuario?> {
             accessToken: sesion.accessToken,
             refreshToken: sesion.refreshToken,
           );
+      await _registrarFcmTokenSiCorresponde();
       return sesion.usuario;
     });
   }
@@ -130,6 +178,15 @@ class AuthController extends AsyncNotifier<Usuario?> {
         // El logout del lado del servidor es best-effort: el usuario tiene
         // que quedar deslogueado localmente aunque el server no responda.
       }
+    }
+    if (soportaPush) {
+      // Antes de limpiar los tokens: la llamada necesita el access token
+      // vigente para autenticarse. Best-effort - un dispositivo que no se
+      // pudo desregistrar simplemente sigue recibiendo pushes hasta que el
+      // token expire o se pise con el de otra cuenta.
+      try {
+        await UsuariosApi(ref.read(dioProvider)).registrarFcmToken(null);
+      } catch (_) {}
     }
     await tokenStorage.limpiar();
     state = const AsyncData(null);

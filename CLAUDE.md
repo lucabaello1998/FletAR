@@ -8,7 +8,7 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fases 0 a 4 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+Fases 0 a 5 completas. Fase 0: solución .NET con Auth JWT de punta a punta
 (registro, login, refresh con rotación/revocación, detección de reuso) contra
 Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
 arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
@@ -40,7 +40,24 @@ descartar/revisar un reporte, cancelar la publicación reportada
 cancelación normal), y desactivar/reactivar cuentas (un usuario desactivado no
 puede loguearse más).
 
-**Sin arrancar:** push — ver *Roadmap*.
+Fase 5 (push) hecha directo, sin Gauntlet Loop: requiere un paso manual externo
+(crear el proyecto de Firebase) igual que Login con Google, así que no se podía
+automatizar de punta a punta de entrada, y el riesgo acá es de integración con un
+SDK externo, no del hueco backend-sin-camino-en-la-UI que Gauntlet Loop caza bien.
+`Usuario.FcmToken` ya existía desde la Fase 0; se sumó `PUT /api/usuarios/me/fcm-token`
+para registrar/desregistrar el token, `FcmSenderService` (paquete `FirebaseAdmin`,
+opcional igual que `GoogleSettings` — sin `GOOGLE_APPLICATION_CREDENTIALS` configurada
+no manda nada y no rompe nada) disparado desde `OfertaService` en los tres eventos
+(nueva oferta, oferta aceptada, publicación completada), y del lado de Flutter
+`firebase_core`+`firebase_messaging` (mobile únicamente — `soportaPush` en
+`fcm_service.dart` da `false` en desktop/web sin tocar `dart:io Platform`, que tiene
+problemas conocidos en web). Verificado real de punta a punta contra un proyecto de
+Firebase de verdad en un emulador Android: pedido de permiso nativo, token
+registrado en el backend (`UPDATE Usuarios SET FcmToken`), y notificación recibida
+tanto con la app en segundo plano (bandeja del sistema) como en primer plano
+(SnackBar propio, ya que FCM no la muestra sola ahí).
+
+**Sin arrancar:** nada — todas las fases del MVP están completas (ver *Roadmap*).
 
 ## Stack
 
@@ -408,17 +425,20 @@ ejercerla — no solo si el endpoint funciona.
   el backend, cancelación de publicaciones por moderación, y
   desactivar/reactivar cuentas. Hecha directo (sin Gauntlet Loop), aplicando ya la
   moraleja de las fases anteriores.
-- **Fase 5 — Push.** Endpoint para registrar `FcmToken`, `FcmSenderService` en BLL
-  disparado en nueva-oferta/oferta-aceptada/publicacion-completada. Alcance mobile
-  únicamente (ver *Stack*).
+- **Fase 5 — listo.** `PUT /api/usuarios/me/fcm-token` + `FcmSenderService`
+  disparado en nueva-oferta/oferta-aceptada/publicacion-completada, con Firebase
+  real conectado y verificado en emulador Android (foreground y background).
+  Alcance mobile únicamente (ver *Stack*).
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
 `PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService`/
-`ReporteService`/`AdminService` (solo hay tests triviales de salud); la vista de
-mapa de "cercanas" usa una ubicación fija
+`ReporteService`/`AdminService`/`FcmSenderService` (solo hay tests triviales de
+salud); la vista de mapa de "cercanas" usa una ubicación fija
 (CABA) hasta que se integre `geolocator`; la sesión no persiste tras un reload real
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
-arranque frío, ver `AuthController.build()` en `auth_providers.dart`).
+arranque frío, ver `AuthController.build()` en `auth_providers.dart`); notificación
+push sin acción de tap-para-navegar (llega con título/cuerpo nomás, no deep-link a
+la publicación); ícono de la app Android sigue siendo el default de Flutter.
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.
@@ -434,6 +454,6 @@ identificadores; en texto visible al usuario, sí.
 ## Cómo se trabaja
 
 - Documentación, comunicación y mensajes de commit en español.
-- No se versiona `.env` (clave JWT y cadena de conexión) ni
-  `firebase-service-account.json` — están en `.gitignore`.
+- No se versiona `.env` (clave JWT y cadena de conexión), `firebase-service-account.json`
+  (backend) ni `google-services.json` (`FLETAR_APP/android/app/`) — están en `.gitignore`.
 - No hacer `git push` ni `git commit` salvo pedido expreso.

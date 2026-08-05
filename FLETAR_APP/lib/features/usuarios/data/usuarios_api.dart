@@ -11,4 +11,9 @@ class UsuariosApi {
     final response = await _dio.get('/usuarios/$id');
     return UsuarioPublico.fromJson(response.data as Map<String, dynamic>);
   }
+
+  /// Alcance mobile únicamente (ver CLAUDE.md, Stack) - `token: null` desregistra
+  /// el dispositivo al desloguearse.
+  Future<void> registrarFcmToken(String? token) =>
+      _dio.put('/usuarios/me/fcm-token', data: {'token': token});
 }
