@@ -10,6 +10,7 @@ public interface IPublicacionService
     Task<IReadOnlyList<PublicacionResponse>> ListarCercanasAsync(double lat, double lng, double radioKm);
     Task<PublicacionResponse> EditarAsync(int id, int usuarioId, PublicacionUpdateRequest request);
     Task CancelarAsync(int id, int usuarioId);
+    Task CancelarComoAdminAsync(int id);
     Task<IReadOnlyList<CategoriaCargaResponse>> ListarCategoriasAsync();
     Task<IReadOnlyList<TipoVehiculoResponse>> ListarTiposVehiculoAsync();
 }

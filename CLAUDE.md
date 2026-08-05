@@ -8,7 +8,7 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fases 0 a 3 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+Fases 0 a 4 completas. Fase 0: solución .NET con Auth JWT de punta a punta
 (registro, login, refresh con rotación/revocación, detección de reuso) contra
 Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
 arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
@@ -28,7 +28,19 @@ un rating mutuo (1 a 5 + comentario) tras `Completada`, con reputación pública
 visible en las listas de publicaciones/ofertas (`GET /api/usuarios/{id}`) antes de
 decidir con quién hacer el flete.
 
-**Sin arrancar:** panel admin, push — ver *Roadmap*.
+Fase 4 (panel admin) se hizo directo, sin Gauntlet Loop, ya con el patrón de huecos
+de las fases anteriores en la cabeza: cualquier usuario puede reportar una
+publicación (`POST /api/publicaciones/{id}/reportes`, botón de bandera en el
+detalle salvo para el propio dueño), y el admin tiene un panel con tres pestañas
+(Reportes, Usuarios, Métricas) en `/admin` — gateado por rol en el router de
+Flutter y por la policy `Admin` en el backend (defensa real; el gateo de Flutter es
+sólo para no mostrar la pantalla, no la autorización). El admin puede
+descartar/revisar un reporte, cancelar la publicación reportada
+(`POST /api/admin/publicaciones/{id}/cancelar`, sin el chequeo de dueño de la
+cancelación normal), y desactivar/reactivar cuentas (un usuario desactivado no
+puede loguearse más).
+
+**Sin arrancar:** push — ver *Roadmap*.
 
 ## Stack
 
@@ -117,11 +129,12 @@ de publicar la app.
 
 ## Modelo de datos
 
-Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/`, y todas ya
-tienen su CRUD completo (`PublicacionesController`+`PublicacionService`,
+Todas las entidades del MVP ya están modeladas en `Fletar.DAL/Models/` y todas ya
+tienen su CRUD completo: `PublicacionesController`+`PublicacionService`,
 `OfertasController`+`OfertaService`, `CalificacionesController`+`CalificacionService`,
-más `UsuariosController`+`UsuarioService` para el perfil público/reputación) desde
-las Fases 1 a 3. Sólo `Reporte` (Fase 4, panel admin) sigue sin controller ni service:
+`UsuariosController`+`UsuarioService` (perfil público/reputación + gestión admin), y
+`ReportesController`+`ReporteService` (crear) más `AdminController`+`AdminService`
+(listar/revisar/descartar reportes, cancelar publicaciones, métricas).
 
 - **Usuario**: cuenta única, sin distinción publicador/fletero. `Rol` (`Usuario`/`Admin`)
   como único diferenciador de permisos. `PasswordHash` es `string?`: una cuenta creada
@@ -389,16 +402,20 @@ ejercerla — no solo si el endpoint funciona.
 - **Fase 3 — listo.** Calificaciones mutuas tras `Completada`, reputación pública
   (`GET /api/usuarios/{id}`) visible en publicaciones/ofertas, pantalla "Mis ofertas"
   para que el fletero encuentre sus publicaciones en cualquier estado.
-- **Fase 4 — Panel admin.** `Reporte` + flujo de reportar una publicación, ruta
-  Flutter gateada por rol (no por plataforma — un admin puede entrar desde mobile
-  también), controllers con policy `Admin`.
+- **Fase 4 — listo.** `Reporte` + flujo de reportar una publicación (botón de
+  bandera en el detalle, oculto para el propio dueño), panel admin en `/admin`
+  (Reportes/Usuarios/Métricas) gateado por rol en Flutter y por policy `Admin` en
+  el backend, cancelación de publicaciones por moderación, y
+  desactivar/reactivar cuentas. Hecha directo (sin Gauntlet Loop), aplicando ya la
+  moraleja de las fases anteriores.
 - **Fase 5 — Push.** Endpoint para registrar `FcmToken`, `FcmSenderService` en BLL
   disparado en nueva-oferta/oferta-aceptada/publicacion-completada. Alcance mobile
   únicamente (ver *Stack*).
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
-`PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService` (solo hay
-tests triviales de salud); la vista de mapa de "cercanas" usa una ubicación fija
+`PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService`/
+`ReporteService`/`AdminService` (solo hay tests triviales de salud); la vista de
+mapa de "cercanas" usa una ubicación fija
 (CABA) hasta que se integre `geolocator`; la sesión no persiste tras un reload real
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
 arranque frío, ver `AuthController.build()` en `auth_providers.dart`).

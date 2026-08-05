@@ -1,8 +1,10 @@
 using Fletar.BLL.Helpers;
+using Fletar.BLL.Services.Admin;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Services.Calificaciones;
 using Fletar.BLL.Services.Ofertas;
 using Fletar.BLL.Services.Publicaciones;
+using Fletar.BLL.Services.Reportes;
 using Fletar.BLL.Services.Usuarios;
 using Fletar.BLL.Settings;
 using Fletar.DAL;
@@ -27,6 +29,8 @@ public static class DependencyInjection
         services.AddScoped<IOfertaService, OfertaService>();
         services.AddScoped<ICalificacionService, CalificacionService>();
         services.AddScoped<IUsuarioService, UsuarioService>();
+        services.AddScoped<IReporteService, ReporteService>();
+        services.AddScoped<IAdminService, AdminService>();
 
         return services;
     }

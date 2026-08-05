@@ -124,6 +124,21 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
         await db.SaveChangesAsync();
     }
 
+    // Moderación: el admin puede cancelar cualquier publicación abusiva/reportada,
+    // sin el chequeo de dueño (a propósito distinto de CancelarAsync) y desde
+    // cualquier estado no terminal - la autorización real ya la resuelve la policy
+    // "Admin" en el controller, este método no vuelve a chequear el rol.
+    public async Task CancelarComoAdminAsync(int id)
+    {
+        var publicacion = await BuscarOFallarAsync(id);
+
+        if (publicacion.Estado is EstadoPublicacion.Completada or EstadoPublicacion.Cancelada)
+            throw new InvalidOperationException("La publicación ya está en un estado final.");
+
+        publicacion.Estado = EstadoPublicacion.Cancelada;
+        await db.SaveChangesAsync();
+    }
+
     public async Task<IReadOnlyList<CategoriaCargaResponse>> ListarCategoriasAsync()
     {
         var categorias = await db.CategoriasCarga

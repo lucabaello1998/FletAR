@@ -36,6 +36,7 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
   @override
   Widget build(BuildContext context) {
     final publicacionesState = ref.watch(publicacionesListProvider);
+    final esAdmin = ref.watch(authControllerProvider).valueOrNull?.esAdmin ?? false;
 
     return Scaffold(
       appBar: AppBar(
@@ -46,6 +47,12 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
               icon: Icon(_mostrarMapa ? Icons.list : Icons.map_outlined),
               tooltip: _mostrarMapa ? 'Ver lista' : 'Ver mapa de cercanas',
               onPressed: () => setState(() => _mostrarMapa = !_mostrarMapa),
+            ),
+          if (esAdmin)
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              tooltip: 'Panel admin',
+              onPressed: () => context.push('/admin'),
             ),
           IconButton(
             icon: const Icon(Icons.logout),

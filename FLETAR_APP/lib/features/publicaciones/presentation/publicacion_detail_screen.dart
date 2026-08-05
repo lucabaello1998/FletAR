@@ -8,6 +8,7 @@ import '../../calificaciones/calificaciones_providers.dart';
 import '../../calificaciones/domain/calificacion.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
+import '../../reportes/reportes_providers.dart';
 import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../../usuarios/usuarios_providers.dart';
 import '../domain/categoria_carga.dart';
@@ -135,12 +136,81 @@ class _PublicacionDetailScreenState extends ConsumerState<PublicacionDetailScree
     }
   }
 
+  Future<void> _reportar() async {
+    final motivoController = TextEditingController();
+    final comentarioController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reportar publicación'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: motivoController,
+                decoration: const InputDecoration(labelText: 'Motivo'),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Ingresá un motivo' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: comentarioController,
+                decoration: const InputDecoration(labelText: 'Comentario (opcional)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) Navigator.pop(context, true);
+            },
+            child: const Text('Reportar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+
+    try {
+      await ref.read(reportesApiProvider).crear(
+            widget.publicacionId,
+            motivo: motivoController.text.trim(),
+            comentario: comentarioController.text.trim().isEmpty ? null : comentarioController.text.trim(),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Reporte enviado. Gracias por avisarnos.')));
+      }
+    } catch (e) {
+      _mostrarError(e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final publicacionState = ref.watch(publicacionDetailProvider(widget.publicacionId));
+    final usuarioActualId = ref.watch(authControllerProvider).valueOrNull?.id;
+    final esDuenoDeEsta =
+        usuarioActualId != null && publicacionState.valueOrNull?.esDueno(usuarioActualId) == true;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Publicación')),
+      appBar: AppBar(
+        title: const Text('Publicación'),
+        actions: [
+          if (publicacionState.hasValue && !esDuenoDeEsta)
+            IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              tooltip: 'Reportar publicación',
+              onPressed: _reportar,
+            ),
+        ],
+      ),
       body: publicacionState.when(
         data: (publicacion) => _DetalleCargado(
           publicacion: publicacion,
