@@ -48,7 +48,13 @@ final misOfertasProvider =
 /// completada.
 class MisOfertasController extends AsyncNotifier<List<Oferta>> {
   @override
-  Future<List<Oferta>> build() => ref.watch(ofertasApiProvider).misOfertas();
+  Future<List<Oferta>> build() {
+    // Ver el comentario análogo en MisPublicacionesController - sin esto,
+    // cambiar de usuario logueado en la misma sesión deja ver las ofertas del
+    // usuario ANTERIOR hasta un refresh manual.
+    ref.watch(authControllerProvider.select((estado) => estado.valueOrNull?.id));
+    return ref.watch(ofertasApiProvider).misOfertas();
+  }
 
   Future<void> recargar() async {
     state = const AsyncLoading();

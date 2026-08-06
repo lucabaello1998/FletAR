@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator;
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
@@ -13,6 +14,8 @@ import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
 import '../../ofertas/presentation/oferta_estado.dart';
 import '../../reportes/reportes_providers.dart';
+import '../../ubicacion/domain/ubicacion_actual.dart';
+import '../../ubicacion/ubicacion_providers.dart';
 import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../../usuarios/usuarios_providers.dart';
 import '../domain/categoria_carga.dart';
@@ -302,6 +305,24 @@ class _DetalleCargado extends ConsumerWidget {
     final categoriasState = ref.watch(categoriasCargaProvider);
     final tiposVehiculoState = ref.watch(tiposVehiculoProvider);
 
+    // Único usado tanto para el pin en vivo del mapa (EnCurso) como para la
+    // sección de calificaciones (Completada) - se calcula una sola vez acá.
+    final ofertaAceptadaUsuarioId =
+        _ofertaAceptadaUsuarioId(ofertasState.valueOrNull ?? const [], publicacion.ofertaAceptadaId);
+
+    // Ubicación en vivo (Fase 6): mientras está EnCurso, la del fletero de la
+    // oferta aceptada - se sigue sólo acá (no en Publicada/OfertaAceptada,
+    // donde ese fletero todavía no está "yendo" a ningún lado).
+    UbicacionActual? posicionFleteroEnCurso;
+    if (esDueno && publicacion.estado == EstadoPublicacion.enCurso && ofertaAceptadaUsuarioId != null) {
+      posicionFleteroEnCurso = ref.watch(seguimientoFleteroProvider(ofertaAceptadaUsuarioId)).valueOrNull;
+    }
+
+    // Mientras sigue Publicada (evaluando ofertas), se sigue a CADA fletero
+    // con oferta Pendiente - ver _UbicacionFleteroChip, que usa este flag para
+    // decidir si se une a cada uno.
+    final mostrarUbicacionDeOferentes = esDueno && publicacion.estado == EstadoPublicacion.publicada;
+
     return RefreshIndicator(
       onRefresh: () async {
         await ref.read(publicacionDetailProvider(publicacion.id).notifier).recargar();
@@ -367,7 +388,7 @@ class _DetalleCargado extends ConsumerWidget {
           if (publicacion.destinoDireccionTexto != null)
             _filaDato(context, Icons.flag_outlined, publicacion.destinoDireccionTexto!),
           const SizedBox(height: 8),
-          _MapaUbicacionPublicacion(publicacion: publicacion),
+          _MapaUbicacionPublicacion(publicacion: publicacion, posicionEnVivo: posicionFleteroEnCurso),
           const SizedBox(height: 16),
           _filaDato(context, Icons.event_outlined, 'Publicada el ${_formatearFecha(publicacion.fechaPublicacion)}'),
           if (publicacion.fechaDeseada != null)
@@ -380,6 +401,8 @@ class _DetalleCargado extends ConsumerWidget {
               ofertas: ofertas,
               usuarioActualId: usuarioId,
               mostrarAceptar: esDueno && publicacion.estado == EstadoPublicacion.publicada,
+              mostrarUbicacionEnVivo: mostrarUbicacionDeOferentes,
+              origenPublicacion: ll.LatLng(publicacion.latitud, publicacion.longitud),
               ofertaEnProcesoId: ofertaEnProcesoId,
               onAceptar: onAceptarOferta,
               onRetirar: onRetirarOferta,
@@ -395,8 +418,7 @@ class _DetalleCargado extends ConsumerWidget {
               publicacion: publicacion,
               usuarioActualId: usuarioId,
               esDueno: esDueno,
-              ofertaAceptadaUsuarioId:
-                  _ofertaAceptadaUsuarioId(ofertasState.valueOrNull ?? const [], publicacion.ofertaAceptadaId),
+              ofertaAceptadaUsuarioId: ofertaAceptadaUsuarioId,
             ),
           if (!esDueno) ...[
             const Divider(height: 32),
@@ -481,58 +503,155 @@ class _DetalleCargado extends ConsumerWidget {
 /// (obligatorio) y, si existe, pin de destino en otro color/ícono para
 /// diferenciarlo. A diferencia de _MapaSeleccionOrigen (create screen), acá
 /// no hay onTap - el punto ya está fijado, esto es solo para visualizarlo.
-class _MapaUbicacionPublicacion extends StatelessWidget {
-  const _MapaUbicacionPublicacion({required this.publicacion});
+///
+/// Cuando `posicionEnVivo` no es null (Fase 6: la publicación está EnCurso y
+/// el dueño está siguiendo al fletero de la oferta aceptada) se agrega un
+/// tercer pin - un ícono de camión, distinguible del pin de origen/destino -
+/// que se mueve solo a medida que llegan actualizaciones (ver
+/// `seguimientoFleteroProvider`). La primera vez que aparece esa posición se
+/// reencuadra la cámara para que quede visible; las actualizaciones
+/// siguientes sólo mueven el pin, sin tocar el zoom/paneo que haya elegido
+/// quien mira el mapa.
+class _MapaUbicacionPublicacion extends StatefulWidget {
+  const _MapaUbicacionPublicacion({required this.publicacion, this.posicionEnVivo});
 
   final Publicacion publicacion;
+  final UbicacionActual? posicionEnVivo;
+
+  @override
+  State<_MapaUbicacionPublicacion> createState() => _MapaUbicacionPublicacionState();
+}
+
+class _MapaUbicacionPublicacionState extends State<_MapaUbicacionPublicacion> {
+  final _mapController = MapController();
+  bool _yaEncuadroConPosicionEnVivo = false;
+
+  @override
+  void didUpdateWidget(covariant _MapaUbicacionPublicacion oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.posicionEnVivo != null && !_yaEncuadroConPosicionEnVivo) {
+      _yaEncuadroConPosicionEnVivo = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reencuadrarConPosicionEnVivo());
+    }
+  }
+
+  void _reencuadrarConPosicionEnVivo() {
+    if (!mounted) return;
+    final enVivo = widget.posicionEnVivo;
+    if (enVivo == null) return;
+
+    final origen = ll.LatLng(widget.publicacion.latitud, widget.publicacion.longitud);
+    final destinoLat = widget.publicacion.destinoLatitud;
+    final destinoLng = widget.publicacion.destinoLongitud;
+    final destino = (destinoLat != null && destinoLng != null) ? ll.LatLng(destinoLat, destinoLng) : null;
+
+    _mapController.fitCamera(CameraFit.coordinates(
+      coordinates: [origen, ?destino, ll.LatLng(enVivo.lat, enVivo.lng)],
+      padding: const EdgeInsets.all(40),
+      maxZoom: 15,
+    ));
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final origen = ll.LatLng(publicacion.latitud, publicacion.longitud);
-    final destinoLat = publicacion.destinoLatitud;
-    final destinoLng = publicacion.destinoLongitud;
+    final origen = ll.LatLng(widget.publicacion.latitud, widget.publicacion.longitud);
+    final destinoLat = widget.publicacion.destinoLatitud;
+    final destinoLng = widget.publicacion.destinoLongitud;
     final destino = (destinoLat != null && destinoLng != null) ? ll.LatLng(destinoLat, destinoLng) : null;
+    final enVivo =
+        widget.posicionEnVivo == null ? null : ll.LatLng(widget.posicionEnVivo!.lat, widget.posicionEnVivo!.lng);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         height: 220,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: origen,
-            initialZoom: 13,
-            // Con destino, encuadra la cámara para que ambos pines queden
-            // visibles; sin destino, alcanza con centrar en el origen.
-            initialCameraFit: destino == null
-                ? null
-                : CameraFit.coordinates(
-                    coordinates: [origen, destino],
-                    padding: const EdgeInsets.all(40),
-                    maxZoom: 15,
-                  ),
-          ),
+        child: Stack(
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'ar.fletar.app',
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: origen,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(Icons.location_pin, color: FletarColors.primary, size: 40),
+            FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: origen,
+                initialZoom: 13,
+                // Con destino (y sin posición en vivo todavía), encuadra la
+                // cámara para que ambos pines queden visibles; sin destino,
+                // alcanza con centrar en el origen. Si la posición en vivo ya
+                // está disponible desde el primer build, se la incluye acá
+                // directamente en vez de esperar el reencuadre de más arriba.
+                initialCameraFit: (destino == null && enVivo == null)
+                    ? null
+                    : CameraFit.coordinates(
+                        coordinates: [origen, ?destino, ?enVivo],
+                        padding: const EdgeInsets.all(40),
+                        maxZoom: 15,
+                      ),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'ar.fletar.app',
                 ),
-                if (destino != null)
-                  Marker(
-                    point: destino,
-                    width: 36,
-                    height: 36,
-                    child: const Icon(Icons.flag, color: FletarColors.secondary, size: 32),
-                  ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: origen,
+                      width: 40,
+                      height: 40,
+                      child: const Icon(Icons.location_pin, color: FletarColors.primary, size: 40),
+                    ),
+                    if (destino != null)
+                      Marker(
+                        point: destino,
+                        width: 36,
+                        height: 36,
+                        child: const Icon(Icons.flag, color: FletarColors.secondary, size: 32),
+                      ),
+                    if (enVivo != null)
+                      Marker(
+                        point: enVivo,
+                        width: 36,
+                        height: 36,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: FletarColors.success,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: const Icon(Icons.local_shipping, color: Colors.white, size: 18),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
+            if (widget.posicionEnVivo != null)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.circle, size: 8, color: FletarColors.success),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Fletero en vivo · ${_haceCuanto(widget.posicionEnVivo!.fecha)}',
+                        style: const TextStyle(color: Colors.white, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -606,6 +725,8 @@ class _ListaOfertas extends StatelessWidget {
     required this.ofertas,
     required this.usuarioActualId,
     required this.mostrarAceptar,
+    required this.mostrarUbicacionEnVivo,
+    required this.origenPublicacion,
     required this.ofertaEnProcesoId,
     required this.onAceptar,
     required this.onRetirar,
@@ -614,6 +735,11 @@ class _ListaOfertas extends StatelessWidget {
   final List<Oferta> ofertas;
   final int? usuarioActualId;
   final bool mostrarAceptar;
+  // Ubicación en vivo (Fase 6): mientras la publicación sigue Publicada, el
+  // dueño puede ver qué tan cerca está cada oferente pendiente - ver
+  // _UbicacionFleteroChip.
+  final bool mostrarUbicacionEnVivo;
+  final ll.LatLng origenPublicacion;
   final int? ofertaEnProcesoId;
   final Future<void> Function(int ofertaId) onAceptar;
   final Future<void> Function(int ofertaId) onRetirar;
@@ -657,6 +783,10 @@ class _ListaOfertas extends StatelessWidget {
                           style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
                       Text(etiquetaEstadoOferta(oferta.estado),
                           style: TextStyle(color: colorEstadoOferta(oferta.estado), fontSize: 12)),
+                      if (mostrarUbicacionEnVivo && oferta.estaPendiente) ...[
+                        const SizedBox(height: 4),
+                        _UbicacionFleteroChip(usuarioId: oferta.usuarioId, origen: origenPublicacion),
+                      ],
                     ],
                   ),
                   trailing: _trailingOferta(oferta),
@@ -691,6 +821,70 @@ String _formatearFecha(DateTime fecha) {
   final hora = local.hour.toString().padLeft(2, '0');
   final minuto = local.minute.toString().padLeft(2, '0');
   return '$dia/$mes/${local.year} $hora:$minuto';
+}
+
+/// "hace 12s" / "hace 3 min" / "hace 2 h" - qué tan fresca es una posición en
+/// vivo, para no mostrar sólo la distancia sin decir si es de hace un
+/// instante o de hace rato (el fletero pudo haber cerrado la app).
+String _haceCuanto(DateTime fecha) {
+  final diferencia = DateTime.now().toUtc().difference(fecha.toUtc());
+  if (diferencia.inSeconds < 60) return 'hace ${diferencia.inSeconds}s';
+  if (diferencia.inMinutes < 60) return 'hace ${diferencia.inMinutes} min';
+  return 'hace ${diferencia.inHours} h';
+}
+
+/// Indicador de ubicación en vivo de un fletero con oferta Pendiente,
+/// pensado para la lista de ofertas de una Publicación Publicada (ver
+/// _ListaOfertas): en vez de agregar un pin más al mapa por cada oferente, se
+/// muestra la distancia al origen del flete - alcanza para que el dueño
+/// compare "cuál está más cerca" sin abrir un mapa con N pines.
+class _UbicacionFleteroChip extends ConsumerWidget {
+  const _UbicacionFleteroChip({required this.usuarioId, required this.origen});
+
+  final int usuarioId;
+  final ll.LatLng origen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final estado = ref.watch(seguimientoFleteroProvider(usuarioId));
+
+    return estado.when(
+      data: (ubicacion) {
+        if (ubicacion == null) {
+          return const Text(
+            'Ubicación en vivo: todavía no la compartió.',
+            style: TextStyle(fontSize: 11, color: FletarColors.mutedForeground, fontStyle: FontStyle.italic),
+          );
+        }
+        final distanciaKm =
+            Geolocator.distanceBetween(origen.latitude, origen.longitude, ubicacion.lat, ubicacion.lng) / 1000;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.local_shipping, size: 14, color: FletarColors.success),
+            const SizedBox(width: 4),
+            Text(
+              'A ${distanciaKm.toStringAsFixed(1)} km del origen · ${_haceCuanto(ubicacion.fecha)}',
+              style: const TextStyle(fontSize: 11, color: FletarColors.mutedForeground),
+            ),
+          ],
+        );
+      },
+      // Mientras se une al grupo no hace falta un spinner grande - es un dato
+      // secundario dentro de la tarjeta de la oferta, no el contenido
+      // principal.
+      loading: () => const SizedBox(
+        height: 12,
+        width: 12,
+        child: CircularProgressIndicator(strokeWidth: 1.5, color: FletarColors.mutedForeground),
+      ),
+      // Si el backend rechaza el seguimiento (no debería pasar - el dueño
+      // siempre está autorizado a seguir a sus propios oferentes pendientes,
+      // ver UbicacionHub.SeguirFletero) simplemente no se muestra nada, para
+      // no romper el resto de la tarjeta de la oferta por esto.
+      error: (_, _) => const SizedBox.shrink(),
+    );
+  }
 }
 
 /// Busca en la lista de ofertas ya cargada cuál es la aceptada, para saber

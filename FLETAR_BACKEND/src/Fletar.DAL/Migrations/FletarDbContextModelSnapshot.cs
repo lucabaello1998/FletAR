@@ -391,6 +391,15 @@ namespace Fletar.DAL.Migrations
                     b.Property<string>("Telefono")
                         .HasColumnType("text");
 
+                    b.Property<double?>("UltimaLatitud")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("UltimaLongitud")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("UltimaUbicacionFecha")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")

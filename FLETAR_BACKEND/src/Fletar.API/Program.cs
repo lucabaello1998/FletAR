@@ -1,5 +1,6 @@
 using System.Text;
 using Fletar.API;
+using Fletar.API.Hubs;
 using Fletar.BLL;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Settings;
@@ -60,6 +61,7 @@ if (firebaseSettings.EstaConfigurado)
     FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
 
 builder.Services.AddBusinessLayer(connectionString, jwtSettings, googleSettings, firebaseSettings);
+builder.Services.AddSignalR();
 
 // Orígenes del cliente web separados por coma (p. ej. https://app.fletar.ar).
 // Vacío por defecto: en producción hay que setear FLETAR_CORS_ORIGENES a mano,
@@ -97,6 +99,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero
         };
+
+        // SignalR no puede mandar el header Authorization en el handshake de
+        // WebSocket - el cliente manda el JWT por query string (?access_token=...)
+        // en su lugar. Restringido a /hubs para no abrir esa vía en el resto de
+        // la API (ahí sigue haciendo falta el header Authorization normal).
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorizationBuilder()
@@ -128,6 +146,7 @@ app.UseCors(PoliticaCorsWeb);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<UbicacionHub>("/hubs/ubicacion");
 
 app.Run();
 

@@ -8,7 +8,7 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fases 0 a 5 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+Fases 0 a 6 completas. Fase 0: solución .NET con Auth JWT de punta a punta
 (registro, login, refresh con rotación/revocación, detección de reuso) contra
 Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
 arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
@@ -59,7 +59,18 @@ registrado en el backend (`UPDATE Usuarios SET FcmToken`), y notificación recib
 tanto con la app en segundo plano (bandeja del sistema) como en primer plano
 (SnackBar propio, ya que FCM no la muestra sola ahí).
 
-**Sin arrancar:** nada — todas las fases del MVP están completas (ver *Roadmap*).
+Fase 6 (ubicación en tiempo real) agregada por fuera del roadmap original del MVP,
+a pedido puntual para competir mejor con otras apps del rubro: `UbicacionHub` de
+SignalR, el dueño ve al fletero moverse en vivo en el mapa mientras el flete está
+`EnCurso`, y a los fleteros con oferta Pendiente mientras todavía está `Publicada`.
+La verificación final encontró y se arregló ahí mismo dos bugs reales (un
+congelamiento silencioso del tracking a los 20-30s, y que el JWT de 15 minutos no
+se refrescaba para la conexión de SignalR) — ver *Fase 6* para el detalle y la
+limitación que quedó sin resolver.
+
+**Sin arrancar:** nada del roadmap del MVP original (ver *Roadmap*) — lo que sigue
+(chat, fotos, verificación de identidad, pagos) se está agregando por fuera de ese
+roadmap, a pedido, fase por fase.
 
 ## Stack
 
@@ -476,6 +487,69 @@ Moraleja nueva para la próxima pasada de mejora continua: priorizar por severid
 real entre *todos* los hallazgos antes de elegir qué implementar, no por el orden
 de llegada de los buscadores en paralelo.
 
+## Fase 6 — Ubicación en tiempo real (Gauntlet Loop)
+
+Pedida explícitamente por fuera del roadmap original ("qué más podemos hacer para
+competir con otras apps del rubro"): ver dónde está el fletero en el mapa mientras
+el flete está `EnCurso`, y ver la posición de cada fletero con oferta `Pendiente`
+mientras el dueño todavía está evaluando ofertas. 5 agentes / ~971k tokens / ~99 min
+en tres etapas (backend, Flutter, verificación end-to-end).
+
+- **Backend**: `UbicacionHub` (SignalR, `/hubs/ubicacion`) con tres métodos —
+  `ActualizarUbicacion` (lo llama el fletero, persiste `Usuario.UltimaLatitud/
+  UltimaLongitud/UltimaUbicacionFecha` y emite a su grupo), `SeguirFletero` (lo
+  llama quien quiere verlo — **autorización real**: sólo si el que llama es dueño
+  de una publicación donde ese fletero tiene oferta Pendiente o Aceptada, si no
+  tira `HubException`) y `DejarDeSeguirFletero`. El JWT no puede ir en el header
+  `Authorization` en el handshake de un WebSocket — va por `?access_token=` en la
+  URL, restringido a rutas bajo `/hubs` (`JwtBearerEvents.OnMessageReceived` en
+  `Program.cs`) para no abrir esa vía en el resto de la API.
+- **Flutter**: `geolocator` (opt-in explícito con un toggle, sólo foreground —
+  nunca tracking en segundo plano) + `signalr_core` (elegido sobre `signalr_netcore`
+  porque este último no soporta web). Una sola conexión de SignalR compartida por
+  usuario logueado (`ubicacionHubClientProvider`, ver Fase 5 para el mismo criterio
+  con Firebase). Pin de camión en vivo en el mapa del detalle (`EnCurso`) y chip de
+  distancia por cada oferta `Pendiente` (`Publicada`).
+
+**La verificación final (crítico de contexto fresco) encontró un bug real de
+severidad alta** que los críticos por etapa no vieron: el tracking se congelaba en
+silencio a los 20-30 segundos de uso normal (con el backend corriendo todo el
+tiempo, sin ninguna falla de red de por medio) — la conexión de SignalR se caía y
+nadie la volvía a levantar porque `UbicacionHubClient` sólo escuchaba
+`onreconnected`, nunca `onclose` (que es lo que dispara `withAutomaticReconnect()`
+cuando agota sus reintentos). Arreglado agregando un `onclose` que reintenta cada 5
+segundos hasta reconectar y volver a seguir a los fleteros que estaban en
+seguimiento. Verificado re-disparando el escenario original: 72+ segundos de
+movimiento simulado (vía un cliente SignalR real en Node) sin ningún congelamiento,
+muy por encima de la ventana de 20-30s donde antes fallaba.
+
+Al verificar el arreglo se encontró **un segundo problema, más importante que el
+primero**: el JWT dura 15 minutos (`JwtSettings.AccessTokenDuracion`), y a
+diferencia de una request HTTP normal (que `AuthInterceptor` refresca sola ante un
+401), el JWT de un Hub de SignalR se valida una sola vez, en el handshake — así que
+una pantalla de tracking abierta más de 15 minutos (el caso de uso central de esta
+fase: acompañar un flete real de punta a punta) pierde el tracking para siempre en
+cuanto el token vence, sin ningún camino de recuperación automática. Arreglado con
+`core/network/access_token_refresher.dart`: antes de cada intento de (re)conexión,
+decodifica el `exp` del JWT guardado y, si está vencido o vence en menos de 30
+segundos, lo refresca *antes* de usarlo (duplica a propósito la llamada a
+`/auth/refresh` que ya tiene `AuthInterceptor` — unificarlas requeriría romper la
+separación de `core/network` por un helper que hoy se usa en un solo lugar).
+
+**Limitación conocida, no resuelta en esta pasada**: en el escenario más extremo
+posible — el backend cae por completo *y* el JWT vence *mientras* la pantalla de
+tracking sigue abierta y conectada — la reconexión automática de la conexión ya
+abierta no se recupera sola (confirmado en pruebas manuales repetidas, esperando
+varios minutos). Los datos sí llegan bien al backend y se persisten correctamente
+(confirmado con `SeguirFletero` al volver a entrar a la pantalla, que trae la
+última posición real), así que no es un problema de datos — es específicamente que
+la conexión SignalR ya viva no se da cuenta de que tiene que reconectarse con un
+token nuevo en este caso compuesto. Salir y volver a entrar a la pantalla de la
+publicación soluciona el problema (fuerza un `SeguirFletero` nuevo). Queda para una
+próxima pasada investigar por qué `onclose`/`withAutomaticReconnect()` no reacciona
+en este caso puntual (backend caído + token vencido a la vez), a diferencia del
+caso ya arreglado (backend vivo todo el tiempo).
+
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
@@ -496,18 +570,27 @@ de llegada de los buscadores en paralelo.
   disparado en nueva-oferta/oferta-aceptada/publicacion-completada, con Firebase
   real conectado y verificado en emulador Android (foreground y background).
   Alcance mobile únicamente (ver *Stack*).
+- **Fase 6 — listo, con una limitación conocida.** Ubicación en tiempo real del
+  fletero (`UbicacionHub` de SignalR) en el mapa del detalle de una publicación,
+  tanto `EnCurso` como `Publicada` con ofertas Pendientes. Ver *Fase 6* para el
+  detalle de los dos bugs reales que encontró la verificación final y la
+  limitación que quedó sin resolver (reconexión tras backend caído + JWT vencido
+  a la vez).
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
 `PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService`/
 `ReporteService`/`AdminService`/`FcmSenderService` (solo hay tests triviales de
-salud); la vista de mapa de "cercanas" usa una ubicación fija
-(CABA) hasta que se integre `geolocator`; la sesión no persiste tras un reload real
+salud); la vista de mapa de "cercanas" usa una ubicación fija (CABA) — `geolocator`
+ya es una dependencia desde la Fase 6, pero todavía no se reusó ahí, sólo para
+compartir la posición del fletero; la sesión no persiste tras un reload real
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
 arranque frío, ver `AuthController.build()` en `auth_providers.dart`); notificación
 push sin acción de tap-para-navegar (llega con título/cuerpo nomás, no deep-link a
-la publicación); ícono de la app Android sigue siendo el default de Flutter; otros
-19 hallazgos `medium`/`low` de la última pasada de mejora continua sin implementar
-todavía (ver *Cómo se hizo la iteración de mejora continua post-Fase 5*).
+la publicación); ícono de la app Android sigue siendo el default de Flutter; la
+reconexión de SignalR no se recupera sola si el backend cae por completo y el JWT
+vence al mismo tiempo mientras una pantalla de tracking sigue abierta (ver *Fase
+6*); otros 19 hallazgos `medium`/`low` de la pasada de mejora continua post-Fase 5
+sin implementar todavía.
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.

@@ -13,8 +13,13 @@ final reportesPendientesProvider =
 
 class ReportesPendientesController extends AsyncNotifier<List<Reporte>> {
   @override
-  Future<List<Reporte>> build() =>
-      ref.watch(adminApiProvider).listarReportes(estado: EstadoReporte.pendiente);
+  Future<List<Reporte>> build() {
+    // Ver el comentario análogo en MisPublicacionesController - sin esto, si
+    // un admin se desloguea y otra cuenta entra en el mismo dispositivo, se
+    // ven los reportes (datos de moderación) de la sesión admin anterior.
+    ref.watch(authControllerProvider.select((estado) => estado.valueOrNull?.id));
+    return ref.watch(adminApiProvider).listarReportes(estado: EstadoReporte.pendiente);
+  }
 
   Future<void> recargar() async {
     state = const AsyncLoading();
@@ -42,7 +47,13 @@ final adminUsuariosProvider =
 
 class AdminUsuariosController extends AsyncNotifier<List<UsuarioAdmin>> {
   @override
-  Future<List<UsuarioAdmin>> build() => ref.watch(adminApiProvider).listarUsuarios();
+  Future<List<UsuarioAdmin>> build() {
+    // Ver el comentario análogo en ReportesPendientesController - evita que
+    // la lista de usuarios (con emails) de una sesión admin anterior quede
+    // visible tras cambiar de cuenta en el mismo dispositivo.
+    ref.watch(authControllerProvider.select((estado) => estado.valueOrNull?.id));
+    return ref.watch(adminApiProvider).listarUsuarios();
+  }
 
   Future<void> buscar(String? busqueda) async {
     state = const AsyncLoading();

@@ -38,8 +38,14 @@ final misPublicacionesProvider =
 /// Publicada.
 class MisPublicacionesController extends AsyncNotifier<List<Publicacion>> {
   @override
-  Future<List<Publicacion>> build() =>
-      ref.watch(publicacionesApiProvider).listar(soloMias: true);
+  Future<List<Publicacion>> build() {
+    // Sin esto, cambiar de usuario logueado en la misma sesión de la app
+    // (logout + login de otra cuenta, típico en un dispositivo compartido)
+    // deja ver las publicaciones del usuario ANTERIOR hasta un refresh manual
+    // - mismo bug que se encontró y arregló en ubicacionHubClientProvider.
+    ref.watch(authControllerProvider.select((estado) => estado.valueOrNull?.id));
+    return ref.watch(publicacionesApiProvider).listar(soloMias: true);
+  }
 
   Future<void> recargar() async {
     state = const AsyncLoading();

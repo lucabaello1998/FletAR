@@ -10,6 +10,7 @@ import '../../auth/auth_providers.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
 import '../../ofertas/presentation/oferta_estado.dart';
+import '../../ubicacion/presentation/compartir_ubicacion_toggle.dart';
 import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../domain/publicacion.dart';
 import '../publicaciones_providers.dart';
@@ -188,30 +189,40 @@ class _MisOfertas extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(misOfertasProvider);
 
-    return RefreshIndicator(
-      onRefresh: () => ref.read(misOfertasProvider.notifier).recargar(),
-      child: state.when(
-        data: (ofertas) => _ListaMisOfertas(ofertas: ofertas),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => ListView(
-          children: [
-            const SizedBox(height: 120),
-            Icon(Icons.error_outline, size: 48, color: FletarColors.destructive),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(mensajeDeError(error), textAlign: TextAlign.center),
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: () => ref.read(misOfertasProvider.notifier).recargar(),
-                child: const Text('Reintentar'),
+    return Column(
+      children: [
+        // Sólo visible si hay al menos una oferta Pendiente/Aceptada (ver
+        // CompartirUbicacionToggle) - no tiene sentido mostrarlo si todavía no
+        // hay ningún dueño que pueda estar interesado en seguirte.
+        const CompartirUbicacionToggle(),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => ref.read(misOfertasProvider.notifier).recargar(),
+            child: state.when(
+              data: (ofertas) => _ListaMisOfertas(ofertas: ofertas),
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => ListView(
+                children: [
+                  const SizedBox(height: 120),
+                  Icon(Icons.error_outline, size: 48, color: FletarColors.destructive),
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(mensajeDeError(error), textAlign: TextAlign.center),
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => ref.read(misOfertasProvider.notifier).recargar(),
+                      child: const Text('Reintentar'),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

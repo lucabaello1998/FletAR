@@ -45,6 +45,8 @@ dependencies:
   latlong2: ^0.10.1
   firebase_core: ^4.13.0
   firebase_messaging: ^16.5.0
+  geolocator: ^14.0.3
+  signalr_core: ^1.1.2
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +58,16 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+# signalr_core (última versión, 1.1.2) declara `web_socket_channel: ^2.4.3`,
+# pero geolocator_web (transitivo de geolocator) exige `web: ^1.0.0`, que sólo
+# lo cumple web_socket_channel >=3.0.1 - las dos declaraciones son
+# incompatibles entre sí sin este override. signalr_core sólo usa la API
+# estable de alto nivel de ese paquete (`WebSocketChannel.connect`,
+# `IOWebSocketChannel`, sin tocar internals), así que forzar la versión más
+# nueva es seguro en la práctica aunque el constraint declarado no lo permita.
+dependency_overrides:
+  web_socket_channel: ^3.0.3
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Ubicación en vivo (Fase 6): sólo foreground - el fletero la comparte de
+         forma explícita con un toggle, nunca en segundo plano. No se pide
+         ACCESS_BACKGROUND_LOCATION ni FOREGROUND_SERVICE_LOCATION a propósito. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="fletar_app"
         android:name="${applicationName}"

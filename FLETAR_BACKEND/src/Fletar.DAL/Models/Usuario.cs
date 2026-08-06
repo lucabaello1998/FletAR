@@ -22,4 +22,11 @@ public class Usuario
     public string? FcmToken { get; set; }
     public DateTime FechaRegistro { get; set; }
     public bool Activo { get; set; } = true;
+
+    /// Última posición conocida de este usuario (ubicación en vivo, Fase 6) - opt-in
+    /// explícito del fletero vía el toggle en la app, nunca tracking en segundo plano.
+    /// Null si nunca compartió su ubicación.
+    public double? UltimaLatitud { get; set; }
+    public double? UltimaLongitud { get; set; }
+    public DateTime? UltimaUbicacionFecha { get; set; }
 }
