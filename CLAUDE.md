@@ -68,8 +68,14 @@ congelamiento silencioso del tracking a los 20-30s, y que el JWT de 15 minutos n
 se refrescaba para la conexión de SignalR) — ver *Fase 6* para el detalle y la
 limitación que quedó sin resolver.
 
+Fase 7 (chat entre publicador y fletero) en la misma tanda: conversación por
+Oferta vía `ChatHub` de SignalR + `GET`/`POST /api/ofertas/{id}/mensajes`, con
+botón "Chatear" tanto en el detalle de publicación (dueño) como en "Mis ofertas"
+(fletero). A diferencia de la Fase 6, esta pasó la verificación final sin
+encontrar nada que arreglar — ver *Fase 7* para el detalle.
+
 **Sin arrancar:** nada del roadmap del MVP original (ver *Roadmap*) — lo que sigue
-(chat, fotos, verificación de identidad, pagos) se está agregando por fuera de ese
+(fotos, verificación de identidad, pagos) se está agregando por fuera de ese
 roadmap, a pedido, fase por fase.
 
 ## Stack
@@ -323,7 +329,15 @@ CLAUDE.md            Este archivo.
 ```
 
 Dependencias del backend: `API → BLL, DTO`; `BLL → DAL, DTO`; `DAL` y `DTO` sin
-referencias internas — igual que Ceta-Logística.
+referencias internas — igual que Ceta-Logística. Única excepción: `Fletar.BLL`
+tiene un `FrameworkReference` a `Microsoft.AspNetCore.App` (no una referencia a
+`Fletar.API` — la dirección de *proyectos* no cambió) para poder usar
+`IHubContext<T>` desde un Service e inyectarlo sin que el Hub tenga que vivir en
+`Fletar.API`. Se dio por primera vez con `ChatHub` (Fase 7): a diferencia de
+`UbicacionHub` (Fase 6, vive en `Fletar.API/Hubs` porque nada de `Fletar.BLL`
+necesitaba notificarlo desde fuera de un request HTTP), `MensajeService` sí
+necesita disparar la notificación al grupo de SignalR desde dentro del propio
+`POST /mensajes` — por eso `ChatHub` vive en `Fletar.BLL/Hubs`.
 
 **Puerto de Postgres en desarrollo: 5433, no 5432.** Se descubrió en esta misma sesión
 que 5432 puede estar ocupado por un Postgres nativo instalado como servicio de
@@ -550,6 +564,44 @@ próxima pasada investigar por qué `onclose`/`withAutomaticReconnect()` no reac
 en este caso puntual (backend caído + token vencido a la vez), a diferencia del
 caso ya arreglado (backend vivo todo el tiempo).
 
+## Fase 7 — Chat entre publicador y fletero (Gauntlet Loop)
+
+Pedida junto con la Fase 6 en la misma tanda de "qué más podemos hacer para
+competir con otras apps del rubro". Chat por **Oferta** (no por Publicación
+entera): cada oferta tiene su propia conversación entre el dueño de la
+publicación y ese oferente puntual — así dos fleteros que ofertaron sobre la
+misma publicación no se ven los mensajes entre ellos. 5 agentes / ~1M tokens /
+~100 min en tres etapas (backend, Flutter, verificación end-to-end). Ambas
+etapas aprobaron a la primera ronda — a diferencia de las Fases 1-3 y 6, esta
+vez no hubo que arreglar nada después de la verificación final.
+
+- **Backend**: entidad `Mensaje` (`OfertaId`, `RemitenteId`, `Texto` con tope de
+  2000 caracteres validado en el servidor, `FechaEnvio`), `GET`/`POST
+  /api/ofertas/{id}/mensajes` con autorización real (sólo el dueño de la
+  publicación o el oferente de *esa* oferta — el resto recibe 401, oferta
+  inexistente 404). Entrega en vivo vía `ChatHub` (SignalR, `/hubs/chat`, mismo
+  patrón de autorización explícita que `UbicacionHub`), y notificación push
+  (`FcmSenderService`, ya existente desde la Fase 5) a la otra parte en cada
+  mensaje nuevo. `ChatHub` vive en `Fletar.BLL/Hubs` en vez de `Fletar.API/Hubs`
+  — ver *Estructura del repositorio* para el porqué (única excepción a la
+  dirección de dependencias del backend).
+- **Flutter**: `lib/features/mensajes/`, con `ChatHubClient` calcado de
+  `UbicacionHubClient` (mismo doble arreglo de reconexión y refresco de token de
+  la Fase 6 — este código ya nace con esos dos bugs arreglados, en vez de
+  reintroducirlos). Botón "Chatear" en dos lugares — el detalle de una
+  publicación (lado dueño, por cada oferta) y "Mis ofertas" (lado fletero, sobre
+  la propia oferta) — aplicando ya la moraleja de navegación-de-las-dos-partes
+  de las fases anteriores desde el diseño, no como arreglo posterior.
+
+Verificado real de punta a punta en el emulador Android con dos cuentas reales:
+mensaje del fletero enviado por script (simulando al fletero mientras el dueño
+tiene la pantalla abierta) llega en vivo a la UI del dueño sin recargar
+(confirmado con una captura de pantalla), y mensaje del dueño escrito desde la
+UI real queda persistido en la base con el remitente correcto (confirmado
+consultando el backend). Caso negativo (un tercero sin relación con la oferta)
+rechazado tanto en `GET`/`POST` (401) como al intentar `SeguirConversacion` por
+el Hub (`HubException`).
+
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
@@ -576,11 +628,15 @@ caso ya arreglado (backend vivo todo el tiempo).
   detalle de los dos bugs reales que encontró la verificación final y la
   limitación que quedó sin resolver (reconexión tras backend caído + JWT vencido
   a la vez).
+- **Fase 7 — listo.** Chat entre publicador y fletero por Oferta (`ChatHub` de
+  SignalR + `GET`/`POST /api/ofertas/{id}/mensajes`), con navegación real desde
+  ambas partes (detalle de publicación para el dueño, "Mis ofertas" para el
+  fletero) desde el diseño inicial. Ver *Fase 7*.
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
 `PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService`/
-`ReporteService`/`AdminService`/`FcmSenderService` (solo hay tests triviales de
-salud); la vista de mapa de "cercanas" usa una ubicación fija (CABA) — `geolocator`
+`ReporteService`/`AdminService`/`FcmSenderService`/`MensajeService` (solo hay
+tests triviales de salud); la vista de mapa de "cercanas" usa una ubicación fija (CABA) — `geolocator`
 ya es una dependencia desde la Fase 6, pero todavía no se reusó ahí, sólo para
 compartir la posición del fletero; la sesión no persiste tras un reload real
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el

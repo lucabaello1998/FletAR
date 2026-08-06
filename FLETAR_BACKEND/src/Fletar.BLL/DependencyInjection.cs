@@ -2,6 +2,7 @@ using Fletar.BLL.Helpers;
 using Fletar.BLL.Services.Admin;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Services.Calificaciones;
+using Fletar.BLL.Services.Mensajes;
 using Fletar.BLL.Services.Notificaciones;
 using Fletar.BLL.Services.Ofertas;
 using Fletar.BLL.Services.Publicaciones;
@@ -35,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IReporteService, ReporteService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<IFcmSenderService, FcmSenderService>();
+        services.AddScoped<IMensajeService, MensajeService>();
 
         return services;
     }

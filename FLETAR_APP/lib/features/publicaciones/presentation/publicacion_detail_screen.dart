@@ -10,6 +10,7 @@ import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
 import '../../calificaciones/calificaciones_providers.dart';
 import '../../calificaciones/domain/calificacion.dart';
+import '../../mensajes/domain/chat_route_args.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
 import '../../ofertas/presentation/oferta_estado.dart';
@@ -402,7 +403,7 @@ class _DetalleCargado extends ConsumerWidget {
               usuarioActualId: usuarioId,
               mostrarAceptar: esDueno && publicacion.estado == EstadoPublicacion.publicada,
               mostrarUbicacionEnVivo: mostrarUbicacionDeOferentes,
-              origenPublicacion: ll.LatLng(publicacion.latitud, publicacion.longitud),
+              publicacion: publicacion,
               ofertaEnProcesoId: ofertaEnProcesoId,
               onAceptar: onAceptarOferta,
               onRetirar: onRetirarOferta,
@@ -726,7 +727,7 @@ class _ListaOfertas extends StatelessWidget {
     required this.usuarioActualId,
     required this.mostrarAceptar,
     required this.mostrarUbicacionEnVivo,
-    required this.origenPublicacion,
+    required this.publicacion,
     required this.ofertaEnProcesoId,
     required this.onAceptar,
     required this.onRetirar,
@@ -739,7 +740,7 @@ class _ListaOfertas extends StatelessWidget {
   // dueño puede ver qué tan cerca está cada oferente pendiente - ver
   // _UbicacionFleteroChip.
   final bool mostrarUbicacionEnVivo;
-  final ll.LatLng origenPublicacion;
+  final Publicacion publicacion;
   final int? ofertaEnProcesoId;
   final Future<void> Function(int ofertaId) onAceptar;
   final Future<void> Function(int ofertaId) onRetirar;
@@ -753,15 +754,19 @@ class _ListaOfertas extends StatelessWidget {
       );
     }
 
+    final origenPublicacion = ll.LatLng(publicacion.latitud, publicacion.longitud);
+
     return Column(
       children: ofertas
           .map((oferta) => Card(
                 margin: const EdgeInsets.symmetric(vertical: 4),
-                child: ListTile(
-                  title: Text('\$${oferta.monto.toStringAsFixed(2)}'),
-                  subtitle: Column(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text('\$${oferta.monto.toStringAsFixed(2)}', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 4),
                       Row(
                         children: [
                           const Icon(Icons.person_outline, size: 14, color: FletarColors.mutedForeground),
@@ -778,7 +783,11 @@ class _ListaOfertas extends StatelessWidget {
                           ReputacionIndicador(usuarioId: oferta.usuarioId),
                         ],
                       ),
-                      if (oferta.mensaje != null && oferta.mensaje!.isNotEmpty) Text(oferta.mensaje!),
+                      if (oferta.mensaje != null && oferta.mensaje!.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(oferta.mensaje!),
+                      ],
+                      const SizedBox(height: 4),
                       Text(_formatearFecha(oferta.fechaOferta),
                           style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
                       Text(etiquetaEstadoOferta(oferta.estado),
@@ -787,30 +796,65 @@ class _ListaOfertas extends StatelessWidget {
                         const SizedBox(height: 4),
                         _UbicacionFleteroChip(usuarioId: oferta.usuarioId, origen: origenPublicacion),
                       ],
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: ofertaEnProcesoId == oferta.id
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Wrap(
+                                spacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  ..._accionesOferta(oferta),
+                                  OutlinedButton.icon(
+                                    onPressed: () => _abrirChat(context, oferta),
+                                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                                    label: const Text('Chatear'),
+                                  ),
+                                ],
+                              ),
+                      ),
                     ],
                   ),
-                  trailing: _trailingOferta(oferta),
                 ),
               ))
           .toList(),
     );
   }
 
-  Widget? _trailingOferta(Oferta oferta) {
-    if (ofertaEnProcesoId == oferta.id) {
-      return const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2));
-    }
+  List<Widget> _accionesOferta(Oferta oferta) {
     if (mostrarAceptar && oferta.estaPendiente) {
-      return TextButton(onPressed: () => onAceptar(oferta.id), child: const Text('Aceptar'));
+      return [TextButton(onPressed: () => onAceptar(oferta.id), child: const Text('Aceptar'))];
     }
     if (oferta.estaPendiente && usuarioActualId != null && oferta.usuarioId == usuarioActualId) {
-      return TextButton(
-        onPressed: () => onRetirar(oferta.id),
-        style: TextButton.styleFrom(foregroundColor: FletarColors.destructive),
-        child: const Text('Retirar'),
-      );
+      return [
+        TextButton(
+          onPressed: () => onRetirar(oferta.id),
+          style: TextButton.styleFrom(foregroundColor: FletarColors.destructive),
+          child: const Text('Retirar'),
+        ),
+      ];
     }
-    return null;
+    return const [];
+  }
+
+  /// La "otra parte" del chat depende de quién esté mirando: si el usuario
+  /// actual ES el oferente de esta oferta puntual (caso de un fletero viendo
+  /// el detalle de la publicación en la que ofertó, no sólo el dueño), la
+  /// otra parte es el dueño de la publicación - si no, es el oferente. Mismo
+  /// criterio de "las dos partes de la oferta" que usa el backend
+  /// (MensajeService.VerificarAccesoAsync).
+  void _abrirChat(BuildContext context, Oferta oferta) {
+    final esUnoMismoElOferente = usuarioActualId != null && usuarioActualId == oferta.usuarioId;
+    final otraParteNombre = esUnoMismoElOferente ? publicacion.usuarioNombre : oferta.usuarioNombre;
+    context.push(
+      '/ofertas/${oferta.id}/chat',
+      extra: ChatRouteArgs(tituloPublicacion: publicacion.titulo, otraParteNombre: otraParteNombre),
+    );
   }
 }
 

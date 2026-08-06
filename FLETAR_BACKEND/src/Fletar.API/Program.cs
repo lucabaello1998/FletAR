@@ -2,6 +2,7 @@ using System.Text;
 using Fletar.API;
 using Fletar.API.Hubs;
 using Fletar.BLL;
+using Fletar.BLL.Hubs;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Settings;
 using FirebaseAdmin;
@@ -147,6 +148,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<UbicacionHub>("/hubs/ubicacion");
+app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();
 

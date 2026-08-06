@@ -114,6 +114,37 @@ namespace Fletar.DAL.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Fletar.DAL.Models.Mensaje", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("FechaEnvio")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OfertaId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RemitenteId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Texto")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RemitenteId");
+
+                    b.HasIndex("OfertaId", "FechaEnvio");
+
+                    b.ToTable("Mensajes");
+                });
+
             modelBuilder.Entity("Fletar.DAL.Models.Oferta", b =>
                 {
                     b.Property<int>("Id")
@@ -425,6 +456,21 @@ namespace Fletar.DAL.Migrations
                     b.HasOne("Fletar.DAL.Models.Usuario", null)
                         .WithMany()
                         .HasForeignKey("UsuarioQueCalificaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fletar.DAL.Models.Mensaje", b =>
+                {
+                    b.HasOne("Fletar.DAL.Models.Oferta", null)
+                        .WithMany()
+                        .HasForeignKey("OfertaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Fletar.DAL.Models.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("RemitenteId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

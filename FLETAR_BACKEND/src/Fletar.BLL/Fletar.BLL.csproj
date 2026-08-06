@@ -1,6 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Necesario para IHubContext<ChatHub>/Hub - ChatHub vive acá (no en
+         Fletar.API) porque MensajeService necesita inyectar IHubContext<ChatHub>
+         para notificar al grupo de la conversación cuando llega un mensaje por
+         POST, y Fletar.BLL no puede referenciar Fletar.API (la dependencia va
+         al revés: API -> BLL). Este FrameworkReference expone los tipos de
+         SignalR server-side sin necesitar el SDK Web completo. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Fletar.DAL\Fletar.DAL.csproj" />
     <ProjectReference Include="..\Fletar.DTO\Fletar.DTO.csproj" />
   </ItemGroup>

@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart' as ll;
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
+import '../../mensajes/domain/chat_route_args.dart';
 import '../../ofertas/domain/oferta.dart';
 import '../../ofertas/ofertas_providers.dart';
 import '../../ofertas/presentation/oferta_estado.dart';
@@ -282,6 +283,25 @@ class _ListaMisOfertas extends ConsumerWidget {
                           style: TextStyle(color: FletarColors.mutedForeground, fontSize: 12)),
                       EstadoPublicacionBadge(estado: oferta.publicacionEstado),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    // Camino de navegación real al chat para el fletero (la
+                    // otra parte del backend, el dueño, llega desde el
+                    // detalle de la publicación - ver _ListaOfertas en
+                    // publicacion_detail_screen.dart). Sin esto, el backend
+                    // soportaría chatear pero el fletero no tendría cómo
+                    // llegar a esa pantalla - mismo hueco que "Mis ofertas"
+                    // vino a resolver en la Fase 3, ver CLAUDE.md.
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push(
+                        '/ofertas/${oferta.id}/chat',
+                        extra: ChatRouteArgs(tituloPublicacion: oferta.publicacionTitulo),
+                      ),
+                      icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                      label: const Text('Chatear'),
+                    ),
                   ),
                 ],
               ),

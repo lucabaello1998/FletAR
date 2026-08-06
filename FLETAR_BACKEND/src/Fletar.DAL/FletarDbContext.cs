@@ -17,6 +17,7 @@ public class FletarDbContext : DbContext
     public DbSet<Oferta> Ofertas => Set<Oferta>();
     public DbSet<Calificacion> Calificaciones => Set<Calificacion>();
     public DbSet<Reporte> Reportes => Set<Reporte>();
+    public DbSet<Mensaje> Mensajes => Set<Mensaje>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -79,6 +80,14 @@ public class FletarDbContext : DbContext
         {
             b.HasOne<Publicacion>().WithMany().HasForeignKey(r => r.PublicacionId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne<Usuario>().WithMany().HasForeignKey(r => r.UsuarioReportanteId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Mensaje>(b =>
+        {
+            b.Property(m => m.Texto).HasMaxLength(Mensaje.TextoLargoMaximo);
+            b.HasOne<Oferta>().WithMany().HasForeignKey(m => m.OfertaId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne<Usuario>().WithMany().HasForeignKey(m => m.RemitenteId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(m => new { m.OfertaId, m.FechaEnvio });
         });
     }
 }

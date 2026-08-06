@@ -5,6 +5,8 @@ import '../../features/admin/presentation/admin_home_screen.dart';
 import '../../features/auth/auth_providers.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
+import '../../features/mensajes/domain/chat_route_args.dart';
+import '../../features/mensajes/presentation/chat_screen.dart';
 import '../../features/publicaciones/domain/publicacion.dart';
 import '../../features/publicaciones/presentation/publicacion_create_screen.dart';
 import '../../features/publicaciones/presentation/publicacion_detail_screen.dart';
@@ -61,6 +63,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(path: '/admin', builder: (context, state) => const AdminHomeScreen()),
+      GoRoute(
+        path: '/ofertas/:id/chat',
+        builder: (context, state) {
+          final ofertaId = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+          final args = state.extra as ChatRouteArgs?;
+          return ChatScreen(
+            ofertaId: ofertaId,
+            // Sin `extra` (recarga del navegador en web, o quien navegue sin
+            // pasarlo) el chat sigue funcionando igual - sólo con un título
+            // más genérico, a diferencia de "editar publicación" que sin sus
+            // datos no puede mostrar nada.
+            tituloPublicacion: args?.tituloPublicacion ?? 'Chat',
+            otraParteNombre: args?.otraParteNombre,
+          );
+        },
+      ),
     ],
   );
 });
