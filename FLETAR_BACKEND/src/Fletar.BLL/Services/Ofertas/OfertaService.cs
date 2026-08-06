@@ -93,6 +93,21 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         if (oferta.Estado != EstadoOferta.Pendiente)
             throw new InvalidOperationException("Sólo se puede aceptar una oferta que esté Pendiente.");
 
+        // UPDATE condicional y atómico: si dos aceptaciones casi simultáneas
+        // llegan hasta acá para la misma publicación, sólo una encuentra el WHERE
+        // Estado=Publicada todavía vigente (Postgres bloquea la fila hasta que la
+        // primera haga commit) - la otra ve 0 filas afectadas y falla, en vez de
+        // que ambas pasen la validación de arriba y dejen dos Ofertas en estado
+        // Aceptada con Publicacion.OfertaAceptadaId apuntando a una sola.
+        var filasActualizadas = await db.Publicaciones
+            .Where(p => p.Id == publicacionId && p.Estado == EstadoPublicacion.Publicada)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(p => p.Estado, EstadoPublicacion.OfertaAceptada)
+                .SetProperty(p => p.OfertaAceptadaId, oferta.Id));
+
+        if (filasActualizadas == 0)
+            throw new InvalidOperationException("Sólo se puede aceptar una oferta cuando la publicación está en estado Publicada.");
+
         var otrasOfertasPendientes = await db.Ofertas
             .Where(o => o.PublicacionId == publicacionId && o.Estado == EstadoOferta.Pendiente && o.Id != ofertaId)
             .ToListAsync();
@@ -101,8 +116,6 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
             otra.Estado = EstadoOferta.Rechazada;
 
         oferta.Estado = EstadoOferta.Aceptada;
-        publicacion.OfertaAceptadaId = oferta.Id;
-        publicacion.Estado = EstadoPublicacion.OfertaAceptada;
 
         await db.SaveChangesAsync();
 

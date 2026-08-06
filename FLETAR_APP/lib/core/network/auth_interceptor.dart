@@ -11,6 +11,7 @@ class AuthInterceptor extends Interceptor {
 
   final TokenStorage _tokenStorage;
   final String _baseUrl;
+  Future<String>? _refreshEnCurso;
 
   @override
   Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
@@ -38,19 +39,19 @@ class AuthInterceptor extends Interceptor {
     }
 
     try {
-      final dioSinInterceptor = Dio(BaseOptions(baseUrl: _baseUrl));
-      final response = await dioSinInterceptor.post(
-        '/auth/refresh',
-        data: {'refreshToken': refreshToken},
-      );
-
-      await _tokenStorage.guardar(
-        accessToken: response.data['accessToken'] as String,
-        refreshToken: response.data['refreshToken'] as String,
-      );
+      // Single-flight: si varias requests reciben 401 casi al mismo tiempo
+      // (típico al abrir el listado, que dispara varios providers juntos),
+      // todas esperan el MISMO refresh en vez de disparar cada una el suyo - el
+      // backend revoca toda la familia ante el reuso de un refresh token ya
+      // usado, así que refrescar dos veces con el mismo token desloguearía al
+      // usuario sin que haya hecho nada malo. El chequeo+asignación es
+      // sincrónico (sin await entre medio), así que dos onError casi
+      // simultáneos no alcanzan a crear cada uno su propio Future: Dart corre
+      // cada continuación hasta el próximo await sin interrupción.
+      final accessToken = await (_refreshEnCurso ??= _refrescar(refreshToken));
 
       final requestOriginal = err.requestOptions
-        ..headers['Authorization'] = 'Bearer ${response.data['accessToken']}'
+        ..headers['Authorization'] = 'Bearer $accessToken'
         ..extra['reintentadoTrasRefresh'] = true;
 
       final dioOriginal = Dio(BaseOptions(baseUrl: _baseUrl));
@@ -59,6 +60,25 @@ class AuthInterceptor extends Interceptor {
     } on DioException {
       await _tokenStorage.limpiar();
       handler.next(err);
+    }
+  }
+
+  Future<String> _refrescar(String refreshToken) async {
+    try {
+      final dioSinInterceptor = Dio(BaseOptions(baseUrl: _baseUrl));
+      final response = await dioSinInterceptor.post(
+        '/auth/refresh',
+        data: {'refreshToken': refreshToken},
+      );
+
+      final accessToken = response.data['accessToken'] as String;
+      await _tokenStorage.guardar(
+        accessToken: accessToken,
+        refreshToken: response.data['refreshToken'] as String,
+      );
+      return accessToken;
+    } finally {
+      _refreshEnCurso = null;
     }
   }
 }

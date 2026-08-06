@@ -443,20 +443,34 @@ donde tenga sentido". 13 agentes / ~1.49M tokens / ~99 min, en cuatro etapas:
    datos reales.
 
 **Quedaron sin implementar 21 de los 24 hallazgos** (documentados en el journal del
-workflow, no en este archivo — son demasiados para este nivel de detalle). Dos son
-`high` y vale la pena que consten acá explícitamente porque el criterio de
-priorización fue simple (los primeros 3 `high` que llegaron, no un ranking real
-de severidad) y se los quedó afuera:
+workflow, no en este archivo — son demasiados para este nivel de detalle). El
+criterio de priorización de esos 3 fue simple (los primeros `high` que llegaron
+de las 4 lentes en paralelo, no un ranking real de severidad), así que se colaron
+dos `high` afuera del top-3 — se arreglaron aparte, directo, apenas se detectó esto:
 
 - **Condición de carrera en `OfertaService.AceptarAsync`**: sin concurrency token
   ni update condicional, dos aceptaciones casi simultáneas sobre la misma
-  publicación pueden dejar dos `Oferta.Estado = Aceptada` con `Publicacion.
-  OfertaAceptadaId` apuntando a una sola — la otra queda huérfana.
+  publicación podían dejar dos `Oferta.Estado = Aceptada` con `Publicacion.
+  OfertaAceptadaId` apuntando a una sola. Arreglado con un `ExecuteUpdateAsync`
+  condicionado a `Estado = Publicada` antes de tocar la Oferta — sólo una de las
+  dos aceptaciones concurrentes encuentra la fila todavía en ese estado; la otra
+  ve 0 filas afectadas y falla con un 400 claro. Verificado disparando dos
+  aceptaciones reales en paralelo contra la API: sólo una tuvo éxito, la otra
+  recibió el error esperado, sin datos huérfanos.
 - **Refresh de token no serializado en `AuthInterceptor`** (Flutter): si varias
-  requests reciben 401 casi al mismo tiempo (típico al abrir el listado, que
-  dispara 4 providers a la vez), cada una dispara su propio `/auth/refresh`; el
-  backend revoca toda la familia ante el reuso del token viejo, y el usuario queda
-  deslogueado sin haber hecho nada malo.
+  requests recibían 401 casi al mismo tiempo (típico al abrir el listado, que
+  dispara 4 providers a la vez), cada una disparaba su propio `/auth/refresh`; el
+  backend revoca toda la familia ante el reuso del token viejo, y el usuario
+  quedaba deslogueado sin haber hecho nada malo. Arreglado con un patrón
+  single-flight (`_refreshEnCurso`): el chequeo+asignación del Future compartido
+  es sincrónico (sin `await` entre medio), así que dos `onError` casi
+  simultáneos no alcanzan a crear cada uno su propio refresh — Dart corre cada
+  continuación hasta el próximo `await` sin interrupción, así que el segundo
+  siempre ve el Future del primero ya asignado.
+
+Los 19 hallazgos restantes (`medium`/`low` en su mayoría — duplicación de código,
+falta de validación server-side de `Monto`, `UsuarioService` sin AutoMapper, etc.)
+quedan pendientes para una próxima pasada.
 
 Moraleja nueva para la próxima pasada de mejora continua: priorizar por severidad
 real entre *todos* los hallazgos antes de elegir qué implementar, no por el orden
@@ -491,11 +505,9 @@ salud); la vista de mapa de "cercanas" usa una ubicación fija
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el
 arranque frío, ver `AuthController.build()` en `auth_providers.dart`); notificación
 push sin acción de tap-para-navegar (llega con título/cuerpo nomás, no deep-link a
-la publicación); ícono de la app Android sigue siendo el default de Flutter;
-condición de carrera en `OfertaService.AceptarAsync` sin concurrency token; refresh
-de token no serializado en `AuthInterceptor` (ver *Cómo se hizo la iteración de
-mejora continua post-Fase 5* para el detalle de estos dos y otros 19 hallazgos
-menores sin implementar todavía).
+la publicación); ícono de la app Android sigue siendo el default de Flutter; otros
+19 hallazgos `medium`/`low` de la última pasada de mejora continua sin implementar
+todavía (ver *Cómo se hizo la iteración de mejora continua post-Fase 5*).
 
 Explícitamente fuera de este roadmap por ahora (decisión tomada, no olvido): pagos/
 Mercado Pago, verificación de identidad/documentación del fletero, cache con Redis.
