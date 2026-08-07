@@ -50,7 +50,14 @@ class AuthInterceptor extends Interceptor {
       // cada continuación hasta el próximo await sin interrupción.
       final accessToken = await (_refreshEnCurso ??= _refrescar(refreshToken));
 
+      // FormData sólo se puede serializar una vez (Dio la marca "finalizada"
+      // la primera vez que se manda) - reusar la misma instancia en un
+      // reintento de una subida de foto tira un StateError, no un
+      // DioException, así que ni siquiera lo agarraba el catch de abajo.
+      // FormData.clone() existe en Dio puntualmente para este caso.
+      final datosOriginales = err.requestOptions.data;
       final requestOriginal = err.requestOptions
+        ..data = datosOriginales is FormData ? datosOriginales.clone() : datosOriginales
         ..headers['Authorization'] = 'Bearer $accessToken'
         ..extra['reintentadoTrasRefresh'] = true;
 

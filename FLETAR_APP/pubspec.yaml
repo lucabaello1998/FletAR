@@ -47,6 +47,15 @@ dependencies:
   firebase_messaging: ^16.5.0
   geolocator: ^14.0.3
   signalr_core: ^1.1.2
+  # Fotos de carga / vehículo (Fase 8) - elegir de galería o tomar con la
+  # cámara. Paquete oficial "Published by flutter.dev" (verified publisher),
+  # soporta Android/iOS/web y (con soporte limitado, vía file_selector)
+  # desktop - verificado en pub.dev antes de agregarlo, no de memoria.
+  image_picker: ^1.2.3
+  # Se importa directo (para armar el Content-Type de la imagen subida) en
+  # vez de depender sólo de lo transitivo vía `dio` - mejor dejarlo explícito
+  # ya que el código lo referencia por nombre.
+  http_parser: ^4.1.2
 
 dev_dependencies:
   flutter_test:

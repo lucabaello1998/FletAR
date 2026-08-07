@@ -19,4 +19,8 @@ public class PublicacionResponse
     public DateTime FechaPublicacion { get; set; }
     public string Estado { get; set; } = null!;
     public int? OfertaAceptadaId { get; set; }
+
+    /// Fotos de la carga (Fase 8) - públicas, visibles para cualquiera que vea
+    /// el detalle. Ordenadas por Orden ascendente (orden de subida).
+    public List<PublicacionFotoResponse> Fotos { get; set; } = new();
 }

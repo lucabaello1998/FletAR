@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
 import '../../../core/errores.dart';
+import '../../../core/network/dio_client.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../domain/publicacion.dart';
+import '../domain/publicacion_foto.dart';
 import '../publicaciones_providers.dart';
 
 /// Punto inicial del mapa cuando todavía no se tocó ningún lugar: Buenos Aires.
@@ -173,8 +176,18 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
           onError(actual.error!);
           return;
         }
-        if (actual.valueOrNull != null && previo?.valueOrNull != actual.valueOrNull) {
-          onExito();
+        final creada = actual.valueOrNull;
+        if (creada != null && previo?.valueOrNull != creada) {
+          ref.read(publicacionesListProvider.notifier).recargar();
+          ref.read(misPublicacionesProvider.notifier).recargar();
+          // En vez de volver al listado (como sí hace guardar una edición),
+          // se entra directo a "Editar" de la publicación recién creada: la
+          // sección de fotos de más abajo necesita un id real para poder
+          // subir algo (POST /publicaciones/{id}/fotos), que recién existe
+          // después de este POST - sin este redirect, agregar una foto justo
+          // después de crear requeriría salir, volver a entrar a la
+          // publicación y tocar "Editar" a mano.
+          context.pushReplacement('/publicaciones/${creada.id}/editar', extra: creada);
         }
       });
     }
@@ -204,6 +217,11 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                       maxLines: 3,
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Ingresá una descripción' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    _SeccionFotosCarga(
+                      publicacionId: widget.publicacionAEditar?.id,
+                      fotosIniciales: widget.publicacionAEditar?.fotos ?? const [],
                     ),
                     const SizedBox(height: 16),
                     categoriasState.when(
@@ -369,6 +387,262 @@ class _MapaSeleccionOrigen extends StatelessWidget {
                 ],
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sección de fotos de la carga (Fase 8): con `publicacionId` (modo edición,
+/// o creación ya redirigida a "Editar" - ver el `ref.listen` de más arriba)
+/// permite agregar/borrar fotos, subiéndolas de inmediato una por una (no
+/// quedan "pendientes" hasta guardar el formulario - cada POST/DELETE ya
+/// persiste solo). Sin `publicacionId` (creando por primera vez, todavía sin
+/// POST exitoso) muestra un mensaje en vez de la sección activa: subir una
+/// foto necesita un id real que recién existe después de crear.
+class _SeccionFotosCarga extends ConsumerStatefulWidget {
+  const _SeccionFotosCarga({required this.publicacionId, required this.fotosIniciales});
+
+  final int? publicacionId;
+  final List<PublicacionFoto> fotosIniciales;
+
+  @override
+  ConsumerState<_SeccionFotosCarga> createState() => _SeccionFotosCargaState();
+}
+
+class _SeccionFotosCargaState extends ConsumerState<_SeccionFotosCarga> {
+  // Mismo tope que el backend (`PublicacionFoto.CantidadMaximaFotos`) -
+  // duplicado a propósito para dar feedback inmediato sin esperar el 400 del
+  // servidor cuando ya se llegó al máximo.
+  static const _maximoFotos = 8;
+
+  late List<PublicacionFoto> _fotos;
+  bool _subiendo = false;
+  int? _eliminandoId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fotos = List.of(widget.fotosIniciales);
+  }
+
+  Future<void> _abrirSelector() async {
+    final id = widget.publicacionId;
+    if (id == null || _subiendo) return;
+    if (_fotos.length >= _maximoFotos) {
+      _mostrarMensaje('Ya llegaste al máximo de $_maximoFotos fotos por publicación.');
+      return;
+    }
+
+    final soportaCamara = ImagePicker().supportsImageSource(ImageSource.camera);
+    final origen = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Elegir de la galería'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            if (soportaCamara)
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Tomar una foto'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (origen == null) return;
+
+    try {
+      final picker = ImagePicker();
+      final espacioDisponible = _maximoFotos - _fotos.length;
+      List<XFile> elegidas;
+      if (origen == ImageSource.gallery) {
+        // pickMultiImage con límite 1 delega en pickImage - alcanza igual
+        // para el caso de "sólo queda espacio para una foto más".
+        elegidas = espacioDisponible == 1
+            ? _comoLista(await picker.pickImage(source: ImageSource.gallery, imageQuality: 85))
+            : await picker.pickMultiImage(imageQuality: 85, limit: espacioDisponible);
+      } else {
+        elegidas = _comoLista(await picker.pickImage(source: ImageSource.camera, imageQuality: 85));
+      }
+      if (elegidas.isEmpty || !mounted) return;
+
+      final aSubir =
+          elegidas.length > espacioDisponible ? elegidas.sublist(0, espacioDisponible) : elegidas;
+      if (aSubir.length < elegidas.length) {
+        _mostrarMensaje(
+            'Sólo se pudieron agregar ${aSubir.length} de ${elegidas.length} fotos (máximo $_maximoFotos por publicación).');
+      }
+
+      setState(() => _subiendo = true);
+      for (final archivo in aSubir) {
+        final foto = await ref.read(publicacionesApiProvider).agregarFoto(id, archivo);
+        if (!mounted) return;
+        setState(() => _fotos = [..._fotos, foto]);
+      }
+      // El detalle ya cacheado (si se llegó a mirar antes en esta sesión)
+      // queda desactualizado - se invalida para que la próxima vez que se
+      // mire se pidan las fotos nuevas, sin forzar un refetch inmediato acá.
+      ref.invalidate(publicacionDetailProvider(id));
+    } catch (e) {
+      if (mounted) _mostrarMensaje(mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _subiendo = false);
+    }
+  }
+
+  List<XFile> _comoLista(XFile? archivo) => archivo == null ? const [] : [archivo];
+
+  Future<void> _borrar(PublicacionFoto foto) async {
+    final id = widget.publicacionId;
+    if (id == null) return;
+
+    setState(() => _eliminandoId = foto.id);
+    try {
+      await ref.read(publicacionesApiProvider).eliminarFoto(id, foto.id);
+      if (!mounted) return;
+      setState(() => _fotos = _fotos.where((f) => f.id != foto.id).toList());
+      ref.invalidate(publicacionDetailProvider(id));
+    } catch (e) {
+      if (mounted) _mostrarMensaje(mensajeDeError(e));
+    } finally {
+      if (mounted) setState(() => _eliminandoId = null);
+    }
+  }
+
+  void _mostrarMensaje(String texto) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.publicacionId;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Fotos de la carga (opcional)', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 8),
+        if (id == null)
+          const Text(
+            'Vas a poder agregar fotos apenas termines de crear la publicación.',
+            style: TextStyle(color: FletarColors.mutedForeground),
+          )
+        else
+          SizedBox(
+            height: 96,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final foto in _fotos)
+                  _Miniatura(
+                    foto: foto,
+                    eliminando: _eliminandoId == foto.id,
+                    onBorrar: () => _borrar(foto),
+                  ),
+                _BotonAgregarFoto(
+                  habilitado: !_subiendo && _fotos.length < _maximoFotos,
+                  subiendo: _subiendo,
+                  onTap: _abrirSelector,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _Miniatura extends StatelessWidget {
+  const _Miniatura({required this.foto, required this.eliminando, required this.onBorrar});
+
+  final PublicacionFoto foto;
+  final bool eliminando;
+  final VoidCallback onBorrar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              resolverUrlMedia(foto.url),
+              width: 90,
+              height: 90,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                width: 90,
+                height: 90,
+                color: FletarColors.border,
+                child: const Icon(Icons.broken_image_outlined),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: eliminando
+                ? const Padding(
+                    padding: EdgeInsets.all(2),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    ),
+                  )
+                : GestureDetector(
+                    onTap: onBorrar,
+                    child: Container(
+                      decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                      padding: const EdgeInsets.all(2),
+                      child: const Icon(Icons.close, size: 16, color: Colors.white),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BotonAgregarFoto extends StatelessWidget {
+  const _BotonAgregarFoto({required this.habilitado, required this.subiendo, required this.onTap});
+
+  final bool habilitado;
+  final bool subiendo;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: habilitado ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 90,
+        height: 90,
+        decoration: BoxDecoration(
+          border: Border.all(color: FletarColors.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: subiendo
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Icon(
+                  Icons.add_photo_alternate_outlined,
+                  color: habilitado ? FletarColors.primary : FletarColors.mutedForeground,
+                ),
         ),
       ),
     );

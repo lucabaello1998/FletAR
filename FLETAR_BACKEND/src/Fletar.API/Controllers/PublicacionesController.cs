@@ -1,6 +1,7 @@
 using Fletar.BLL.Services.Ofertas;
 using Fletar.BLL.Services.Publicaciones;
 using Fletar.DTO.Publicaciones;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fletar.API.Controllers;
@@ -60,4 +61,19 @@ public class PublicacionesController(IPublicacionService publicacionService, IOf
     [HttpGet("tipos-vehiculo")]
     public async Task<ActionResult<IReadOnlyList<TipoVehiculoResponse>>> ListarTiposVehiculo()
         => Ok(await publicacionService.ListarTiposVehiculoAsync());
+
+    // Fotos de carga (Fase 8) - públicas en la lectura (van incluidas en
+    // PublicacionResponse.Fotos, ver GET .../{id}), pero escribir (agregar o
+    // borrar) es sólo del dueño - la autorización real vive en
+    // PublicacionService, no acá.
+    [HttpPost("{id:int}/fotos")]
+    public async Task<ActionResult<PublicacionFotoResponse>> AgregarFoto(int id, IFormFile archivo)
+        => Ok(await publicacionService.AgregarFotoAsync(id, this.UsuarioIdActual(), archivo));
+
+    [HttpDelete("{id:int}/fotos/{fotoId:int}")]
+    public async Task<IActionResult> EliminarFoto(int id, int fotoId)
+    {
+        await publicacionService.EliminarFotoAsync(id, fotoId, this.UsuarioIdActual());
+        return NoContent();
+    }
 }

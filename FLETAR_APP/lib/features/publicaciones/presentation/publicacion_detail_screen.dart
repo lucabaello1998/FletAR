@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart' as ll;
 
 import '../../../core/errores.dart';
+import '../../../core/network/dio_client.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
 import '../../calificaciones/calificaciones_providers.dart';
@@ -21,6 +22,7 @@ import '../../usuarios/presentation/reputacion_indicador.dart';
 import '../../usuarios/usuarios_providers.dart';
 import '../domain/categoria_carga.dart';
 import '../domain/publicacion.dart';
+import '../domain/publicacion_foto.dart';
 import '../domain/tipo_vehiculo.dart';
 import '../publicaciones_providers.dart';
 import 'publicacion_estado.dart';
@@ -342,15 +344,19 @@ class _DetalleCargado extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.person_outline, size: 16, color: FletarColors.mutedForeground),
-              const SizedBox(width: 4),
-              Text('Publica: ${publicacion.usuarioNombre}',
-                  style: const TextStyle(color: FletarColors.mutedForeground)),
-              const SizedBox(width: 8),
-              ReputacionIndicador(usuarioId: publicacion.usuarioId),
-            ],
+          InkWell(
+            onTap: () => context.push('/usuarios/${publicacion.usuarioId}'),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.person_outline, size: 16, color: FletarColors.mutedForeground),
+                const SizedBox(width: 4),
+                Text('Publica: ${publicacion.usuarioNombre}',
+                    style: const TextStyle(color: FletarColors.mutedForeground)),
+                const SizedBox(width: 8),
+                ReputacionIndicador(usuarioId: publicacion.usuarioId),
+              ],
+            ),
           ),
           if (esDueno) ...[
             const SizedBox(height: 12),
@@ -362,6 +368,10 @@ class _DetalleCargado extends ConsumerWidget {
               onIniciar: onIniciar,
               onCompletar: onCompletar,
             ),
+          ],
+          if (publicacion.fotos.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _FotosCarga(fotos: publicacion.fotos),
           ],
           const SizedBox(height: 12),
           Text(publicacion.descripcion),
@@ -660,6 +670,44 @@ class _MapaUbicacionPublicacionState extends State<_MapaUbicacionPublicacion> {
   }
 }
 
+/// Fotos de la carga (Fase 8): fila horizontal scrolleable de sólo lectura -
+/// alcanza para este caso, no hace falta un carrusel con paginado/zoom. Se
+/// agregan/borran desde el formulario de edición (ver
+/// `_SeccionFotosCarga` en publicacion_create_screen.dart), acá sólo se
+/// muestran - son públicas para cualquiera que vea el detalle.
+class _FotosCarga extends StatelessWidget {
+  const _FotosCarga({required this.fotos});
+
+  final List<PublicacionFoto> fotos;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 120,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: fotos.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) => ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            resolverUrlMedia(fotos[index].url),
+            width: 160,
+            height: 120,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: 160,
+              height: 120,
+              color: FletarColors.border,
+              child: const Icon(Icons.broken_image_outlined),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Botones de la máquina de estados que solo el dueño de la publicación ve:
 /// Publicada -> Cancelada, OfertaAceptada -> EnCurso, EnCurso -> Completada.
 /// Cada estado muestra a lo sumo un botón (las transiciones son excluyentes).
@@ -767,21 +815,25 @@ class _ListaOfertas extends StatelessWidget {
                     children: [
                       Text('\$${oferta.monto.toStringAsFixed(2)}', style: Theme.of(context).textTheme.titleMedium),
                       const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline, size: 14, color: FletarColors.mutedForeground),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              oferta.usuarioNombre,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12),
+                      InkWell(
+                        onTap: () => context.push('/usuarios/${oferta.usuarioId}'),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.person_outline, size: 14, color: FletarColors.mutedForeground),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                oferta.usuarioNombre,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: FletarColors.mutedForeground, fontSize: 12),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          ReputacionIndicador(usuarioId: oferta.usuarioId),
-                        ],
+                            const SizedBox(width: 6),
+                            ReputacionIndicador(usuarioId: oferta.usuarioId),
+                          ],
+                        ),
                       ),
                       if (oferta.mensaje != null && oferta.mensaje!.isNotEmpty) ...[
                         const SizedBox(height: 4),

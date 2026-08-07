@@ -58,6 +58,11 @@ class _PublicacionesListScreenState extends ConsumerState<PublicacionesListScree
               onPressed: () => context.push('/admin'),
             ),
           IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            tooltip: 'Mi perfil',
+            onPressed: () => context.push('/perfil'),
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => ref.read(authControllerProvider.notifier).logout(),
           ),

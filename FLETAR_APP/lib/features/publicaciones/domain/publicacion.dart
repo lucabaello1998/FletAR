@@ -1,3 +1,5 @@
+import 'publicacion_foto.dart';
+
 /// Estados posibles de una Publicación - reflejan el enum `EstadoPublicacion`
 /// del backend, serializado como string (ver PublicacionProfile.cs).
 abstract final class EstadoPublicacion {
@@ -27,6 +29,7 @@ class Publicacion {
     required this.fechaPublicacion,
     required this.estado,
     this.ofertaAceptadaId,
+    this.fotos = const [],
   });
 
   factory Publicacion.fromJson(Map<String, dynamic> json) => Publicacion(
@@ -48,6 +51,10 @@ class Publicacion {
         fechaPublicacion: DateTime.parse(json['fechaPublicacion'] as String),
         estado: json['estado'] as String,
         ofertaAceptadaId: json['ofertaAceptadaId'] as int?,
+        fotos: (json['fotos'] as List?)
+                ?.map((e) => PublicacionFoto.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
 
   final int id;
@@ -67,6 +74,7 @@ class Publicacion {
   final DateTime fechaPublicacion;
   final String estado;
   final int? ofertaAceptadaId;
+  final List<PublicacionFoto> fotos;
 
   bool esDueno(int usuarioActualId) => usuarioId == usuarioActualId;
 }

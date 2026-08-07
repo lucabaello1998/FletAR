@@ -20,9 +20,19 @@ public class PublicacionProfile : Profile
             // Publicacion no tiene navegación a Usuario (los models de DAL no tienen
             // propiedades de navegación); el nombre se resuelve aparte en el service
             // con un lookup por lote sobre la página ya recortada.
-            .ForMember(dest => dest.UsuarioNombre, opt => opt.Ignore());
+            .ForMember(dest => dest.UsuarioNombre, opt => opt.Ignore())
+            // Mismo criterio: Fotos (Fase 8) no viene de una navegación, se
+            // resuelve aparte en el service con un lookup por lote sobre
+            // PublicacionFoto.
+            .ForMember(dest => dest.Fotos, opt => opt.Ignore());
 
         CreateMap<CategoriaCarga, CategoriaCargaResponse>();
         CreateMap<TipoVehiculo, TipoVehiculoResponse>();
+
+        // Url no es una columna de PublicacionFoto (sólo se persiste
+        // NombreArchivo) - se arma en el service llamando a
+        // IAlmacenamientoArchivosService.ConstruirUrlRelativa.
+        CreateMap<PublicacionFoto, PublicacionFotoResponse>()
+            .ForMember(dest => dest.Url, opt => opt.Ignore());
     }
 }

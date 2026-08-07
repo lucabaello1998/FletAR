@@ -248,6 +248,34 @@ namespace Fletar.DAL.Migrations
                     b.ToTable("Publicaciones");
                 });
 
+            modelBuilder.Entity("Fletar.DAL.Models.PublicacionFoto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("FechaSubida")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NombreArchivo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PublicacionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicacionId", "Orden");
+
+                    b.ToTable("PublicacionFotos");
+                });
+
             modelBuilder.Entity("Fletar.DAL.Models.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -512,6 +540,15 @@ namespace Fletar.DAL.Migrations
                         .WithMany()
                         .HasForeignKey("UsuarioId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fletar.DAL.Models.PublicacionFoto", b =>
+                {
+                    b.HasOne("Fletar.DAL.Models.Publicacion", null)
+                        .WithMany()
+                        .HasForeignKey("PublicacionId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

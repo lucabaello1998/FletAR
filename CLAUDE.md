@@ -8,7 +8,7 @@ separada, es un rol que se juega por transacción.
 
 ## Estado
 
-Fases 0 a 6 completas. Fase 0: solución .NET con Auth JWT de punta a punta
+Fases 0 a 8 completas. Fase 0: solución .NET con Auth JWT de punta a punta
 (registro, login, refresh con rotación/revocación, detección de reuso) contra
 Postgres+PostGIS en Docker, más el proyecto Flutter (mobile + desktop + web)
 arrancando con su estructura, tema y login/registro — corriendo tanto de ventana
@@ -74,9 +74,18 @@ botón "Chatear" tanto en el detalle de publicación (dueño) como en "Mis ofert
 (fletero). A diferencia de la Fase 6, esta pasó la verificación final sin
 encontrar nada que arreglar — ver *Fase 7* para el detalle.
 
+Fase 8 (fotos) en la misma tanda: fotos de la carga en una publicación (dueño,
+hasta 8, visibles para cualquiera que vea el detalle) y una foto de vehículo por
+usuario (perfil propio, vía la nueva pantalla "Mi perfil") — almacenamiento en
+disco local scopeado a `Fletar.API/uploads/` (nunca `wwwroot`), con validación
+real de Content-Type + magic bytes y nombres GUID (nunca el nombre que manda el
+cliente). A diferencia de la Fase 7, esta vez la verificación final sí encontró
+dos bugs reales — ver *Fase 8* para el detalle — ambos arreglados aparte,
+directo, apenas se detectaron.
+
 **Sin arrancar:** nada del roadmap del MVP original (ver *Roadmap*) — lo que sigue
-(fotos, verificación de identidad, pagos) se está agregando por fuera de ese
-roadmap, a pedido, fase por fase.
+(verificación de identidad, pagos) se está agregando por fuera de ese roadmap, a
+pedido, fase por fase.
 
 ## Stack
 
@@ -602,6 +611,85 @@ consultando el backend). Caso negativo (un tercero sin relación con la oferta)
 rechazado tanto en `GET`/`POST` (401) como al intentar `SeguirConversacion` por
 el Hub (`HubException`).
 
+## Fase 8 — Fotos (Gauntlet Loop)
+
+Agregada en la misma tanda que las Fases 6 y 7 ("qué más podemos hacer para
+competir"), pero por fuera del pedido puntual de esas dos — fotos era una de
+las mejoras discutidas desde el arranque de esta tanda de mejora continua. Dos
+casos de uso independientes: fotos de la **carga** (el dueño de una
+publicación sube hasta 8, públicas como el resto de la publicación) y foto del
+**vehículo** (una por usuario, en el perfil propio — señal de confianza para
+cuando ese usuario oferta como fletero). 5 agentes / ~346k tokens / ~50 min en
+tres etapas (backend, Flutter, verificación end-to-end).
+
+- **Backend**: entidad `PublicacionFoto` (guarda sólo `NombreArchivo`, nunca la
+  URL armada — la URL relativa se construye en el service, así no queda atada
+  a un host) + `Usuario.FotoUrl` (ya existía desde la Fase 0, reutilizado sin
+  migración nueva). `IAlmacenamientoArchivosService` guarda en disco local
+  bajo `Fletar.API/uploads/{publicaciones,vehiculos}/` con nombre
+  `Guid.NewGuid()` — el código ni siquiera lee `IFormFile.FileName`, así que
+  un nombre de archivo malicioso (`../../../etc/passwd.jpg`) no tiene ningún
+  efecto porque nunca se consulta. Valida Content-Type contra una whitelist
+  (jpg/png/webp) Y la firma de magic bytes de los primeros bytes reales del
+  archivo (no la extensión declarada), tope de 5MB y de 8 fotos por
+  publicación. Servido con `UseStaticFiles` + un `PhysicalFileProvider`
+  explícito scopeado *sólo* a `uploads/` (nunca `wwwroot` — ver *Estructura
+  del repositorio*), colocado después de `UseCors` para que las imágenes
+  salgan con headers CORS (necesario para que Flutter web con renderer
+  CanvasKit, que trae los bytes por fetch/XHR, pueda mostrarlas).
+  `POST`/`DELETE /api/publicaciones/{id}/fotos(/{fotoId})` y
+  `PUT /api/usuarios/me/foto-vehiculo`, con la autorización real en los
+  services (`ValidarDuenio`), no en el controller.
+- **Flutter**: `image_picker` para elegir de galería o cámara. Sección de
+  fotos en crear/editar publicación (con un giro de UX: tras crear una
+  publicación, la pantalla redirige sola a "Editar" en vez de volver al
+  listado — agregar una foto recién creada la publicación hubiera requerido
+  salir y volver a entrar a mano, el mismo tipo de hueco de navegación que ya
+  se evitó en fases anteriores, esta vez resuelto desde el diseño). Carrusel
+  de sólo lectura en el detalle. **Hueco de navegación real que no existía
+  hasta esta fase**: no había ninguna pantalla "Mi perfil" — se creó una
+  (ruta `/perfil`, ícono nuevo en el AppBar) para que el propio usuario suba
+  su foto de vehículo, más `UsuarioPublicoScreen` (`/usuarios/:id`) para ver
+  el perfil público de cualquier otro usuario navegando desde el nombre del
+  dueño/oferentes.
+
+**La verificación final encontró dos bugs reales — a diferencia de la Fase 7,
+que no encontró nada, esta se pareció más a la Fase 6:**
+
+- **Una subida de foto con el JWT vencido rompía en silencio**:
+  `AuthInterceptor` reintenta un 401 refrescando el token y reenviando el
+  mismo `RequestOptions`, pero para una subida multipart eso significa
+  reenviar la misma instancia de `FormData` — Dio la marca "finalizada" la
+  primera vez que se serializa, y reusarla tira un `StateError` (no un
+  `DioException`, así que el `catch` existente ni siquiera lo atrapaba): el
+  usuario veía el genérico "Ocurrió un error inesperado" sin ninguna pista de
+  la causa real. Arreglado clonando la `FormData` antes de reintentar
+  (`FormData.clone()`, que Dio expone puntualmente para este caso). Verificado
+  con un test nuevo (`test/auth_interceptor_formdata_retry_test.dart`, primer
+  test automatizado de `AuthInterceptor`) que arma un servidor HTTP real en
+  loopback, fuerza un 401 en el primer intento y confirma que el reintento
+  llega con el archivo completo — confirmé además que ese test *falla* si se
+  saca el fix, no sólo que pasa con él puesto.
+- **Cambiar la foto de vehículo desde "Mi perfil" expulsaba de esa pantalla**:
+  `routerProvider` construía un `GoRouter` *nuevo* (con
+  `initialLocation: '/'`) cada vez que `ref.watch(authControllerProvider)`
+  cambiaba — y `actualizarFotoUrl()` (para reflejar la foto nueva en memoria
+  sin un endpoint `/usuarios/me`) es la primera vez que algo muta ese estado
+  por un motivo distinto a login/logout, así que nadie había notado que
+  cualquier cambio ahí resetea toda la navegación. Arreglado con el patrón
+  estándar de Riverpod+go_router: un `ChangeNotifier` puente
+  (`_RouterRefreshNotifier`) pasado como `refreshListenable`, así el
+  `GoRouter` se crea una sola vez y sólo se le pide reevaluar `redirect` —
+  nunca se recrea ni pierde la ubicación actual. Verificado real en el
+  emulador: subir una foto de vehículo ahora deja al usuario en "Mi perfil"
+  viendo la foto nueva, no en el listado principal.
+
+Moraleja que se repite (ver Fases 1+2, 3 y 6): una verificación de punta a
+punta encuentra lo que cada etapa por separado no puede — ni backend ni
+Flutter por separado tenían motivo para ejercitar "¿qué pasa si el token
+vence justo antes de subir una foto?" ni "¿qué pasa si cambio esta foto y no
+otra cosa del estado de auth?".
+
 ## Roadmap
 
 - **Fase 0 — listo.** Scaffold + Auth de punta a punta.
@@ -632,11 +720,18 @@ el Hub (`HubException`).
   SignalR + `GET`/`POST /api/ofertas/{id}/mensajes`), con navegación real desde
   ambas partes (detalle de publicación para el dueño, "Mis ofertas" para el
   fletero) desde el diseño inicial. Ver *Fase 7*.
+- **Fase 8 — listo.** Fotos de la carga (`PublicacionFoto`, hasta 8 por
+  publicación) y foto de vehículo por usuario (`Usuario.FotoUrl`, perfil
+  propio vía la nueva pantalla "Mi perfil"), en disco local servido desde
+  `Fletar.API/uploads/` (nunca `wwwroot`). Ver *Fase 8* para los dos bugs
+  reales que encontró la verificación final y cómo se arreglaron.
 
 Gaps menores conocidos, no bloqueantes: sin tests automatizados de
 `PublicacionService`/`OfertaService`/`CalificacionService`/`UsuarioService`/
-`ReporteService`/`AdminService`/`FcmSenderService`/`MensajeService` (solo hay
-tests triviales de salud); la vista de mapa de "cercanas" usa una ubicación fija (CABA) — `geolocator`
+`ReporteService`/`AdminService`/`FcmSenderService`/`MensajeService`/
+`AlmacenamientoArchivosService` (solo hay tests triviales de salud del lado
+backend; del lado Flutter sí hay uno puntual desde la Fase 8,
+`auth_interceptor_formdata_retry_test.dart`); la vista de mapa de "cercanas" usa una ubicación fija (CABA) — `geolocator`
 ya es una dependencia desde la Fase 6, pero todavía no se reusó ahí, sólo para
 compartir la posición del fletero; la sesión no persiste tras un reload real
 del navegador (falta un endpoint `/usuarios/me` para validar el token guardado en el

@@ -1,13 +1,16 @@
 using AutoMapper;
+using Fletar.BLL.Services.Archivos;
 using Fletar.DAL;
 using Fletar.DAL.Models;
 using Fletar.DTO.Publicaciones;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
 
 namespace Fletar.BLL.Services.Publicaciones;
 
-public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicacionService
+public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamientoArchivosService almacenamiento)
+    : IPublicacionService
 {
     private const int PageSizePorDefecto = 20;
 
@@ -159,13 +162,63 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
         return mapper.Map<List<TipoVehiculoResponse>>(tipos);
     }
 
+    // Fotos de carga (Fase 8) - el dueño puede agregar/quitar en cualquier
+    // estado de la publicación (a diferencia de EditarAsync/CancelarAsync,
+    // que sólo valen en Publicada): no hay una razón de negocio para impedir
+    // sumar/sacar fotos mientras el flete ya está en curso o completado,
+    // así que a propósito no se llama ValidarDuenioYEstadoEditable acá.
+    public async Task<PublicacionFotoResponse> AgregarFotoAsync(int publicacionId, int usuarioId, IFormFile archivo)
+    {
+        var publicacion = await BuscarOFallarAsync(publicacionId);
+        ValidarDuenio(publicacion, usuarioId, "agregar fotos a");
+
+        var cantidadActual = await db.PublicacionFotos.CountAsync(f => f.PublicacionId == publicacionId);
+        if (cantidadActual >= PublicacionFoto.CantidadMaximaFotos)
+            throw new InvalidOperationException(
+                $"Una publicación no puede tener más de {PublicacionFoto.CantidadMaximaFotos} fotos.");
+
+        var nombreArchivo = await almacenamiento.GuardarImagenAsync(archivo, CarpetasDeArchivos.Publicaciones);
+
+        var foto = new PublicacionFoto
+        {
+            PublicacionId = publicacionId,
+            NombreArchivo = nombreArchivo,
+            Orden = cantidadActual,
+            FechaSubida = DateTime.UtcNow
+        };
+
+        db.PublicacionFotos.Add(foto);
+        await db.SaveChangesAsync();
+
+        return MapearFoto(foto);
+    }
+
+    public async Task EliminarFotoAsync(int publicacionId, int fotoId, int usuarioId)
+    {
+        var publicacion = await BuscarOFallarAsync(publicacionId);
+        ValidarDuenio(publicacion, usuarioId, "borrar fotos de");
+
+        var foto = await db.PublicacionFotos.SingleOrDefaultAsync(f => f.Id == fotoId && f.PublicacionId == publicacionId)
+            ?? throw new KeyNotFoundException("La foto indicada no existe en esta publicación.");
+
+        // Borra el archivo del disco primero: si esto tirara, preferimos que
+        // el registro siga existiendo (huérfano pero reintentable) antes que
+        // borrar el registro y dejar un archivo huérfano en disco sin ningún
+        // rastro en la base para encontrarlo después.
+        almacenamiento.Eliminar(CarpetasDeArchivos.Publicaciones, foto.NombreArchivo);
+
+        db.PublicacionFotos.Remove(foto);
+        await db.SaveChangesAsync();
+    }
+
     private async Task<Publicacion> BuscarOFallarAsync(int id)
         => await db.Publicaciones.SingleOrDefaultAsync(p => p.Id == id)
             ?? throw new KeyNotFoundException("La publicación indicada no existe.");
 
     // UsuarioNombre se denormaliza acá (no viene de una navegación de EF: los models
     // de DAL no tienen navigation properties) con un único lookup por lote sobre los
-    // usuarios de la página ya recortada, nunca una query por fila.
+    // usuarios de la página ya recortada, nunca una query por fila. Fotos (Fase 8)
+    // sigue el mismo criterio.
     private async Task<PublicacionResponse> MapearConNombreAsync(Publicacion publicacion)
     {
         var response = mapper.Map<PublicacionResponse>(publicacion);
@@ -173,6 +226,13 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
             .Where(u => u.Id == publicacion.UsuarioId)
             .Select(u => u.Nombre)
             .SingleOrDefaultAsync() ?? string.Empty;
+
+        var fotos = await db.PublicacionFotos
+            .Where(f => f.PublicacionId == publicacion.Id)
+            .OrderBy(f => f.Orden)
+            .ToListAsync();
+        response.Fotos = fotos.Select(MapearFoto).ToList();
+
         return response;
     }
 
@@ -180,16 +240,43 @@ public class PublicacionService(FletarDbContext db, IMapper mapper) : IPublicaci
     {
         var responses = mapper.Map<List<PublicacionResponse>>(publicaciones);
 
+        var publicacionIds = publicaciones.Select(p => p.Id).ToList();
+
         var usuarioIds = publicaciones.Select(p => p.UsuarioId).Distinct().ToList();
         var nombresPorId = await db.Usuarios
             .Where(u => usuarioIds.Contains(u.Id))
             .Select(u => new { u.Id, u.Nombre })
             .ToDictionaryAsync(u => u.Id, u => u.Nombre);
 
+        // Un único lookup por lote sobre todas las fotos de la página ya
+        // recortada, agrupado en memoria - nunca una query por publicación.
+        var fotosPorPublicacion = (await db.PublicacionFotos
+                .Where(f => publicacionIds.Contains(f.PublicacionId))
+                .OrderBy(f => f.Orden)
+                .ToListAsync())
+            .GroupBy(f => f.PublicacionId)
+            .ToDictionary(g => g.Key, g => g.Select(MapearFoto).ToList());
+
         foreach (var response in responses)
+        {
             response.UsuarioNombre = nombresPorId.GetValueOrDefault(response.UsuarioId, string.Empty);
+            response.Fotos = fotosPorPublicacion.GetValueOrDefault(response.Id, new List<PublicacionFotoResponse>());
+        }
 
         return responses;
+    }
+
+    private PublicacionFotoResponse MapearFoto(PublicacionFoto foto)
+    {
+        var response = mapper.Map<PublicacionFotoResponse>(foto);
+        response.Url = almacenamiento.ConstruirUrlRelativa(CarpetasDeArchivos.Publicaciones, foto.NombreArchivo);
+        return response;
+    }
+
+    private static void ValidarDuenio(Publicacion publicacion, int usuarioId, string accion)
+    {
+        if (publicacion.UsuarioId != usuarioId)
+            throw new UnauthorizedAccessException($"No tenés permiso para {accion} esta publicación.");
     }
 
     private static void ValidarDuenioYEstadoEditable(Publicacion publicacion, int usuarioId)

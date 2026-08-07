@@ -14,3 +14,18 @@ Dio crearDioClient(TokenStorage tokenStorage) {
   dio.interceptors.add(AuthInterceptor(tokenStorage, apiBaseUrl));
   return dio;
 }
+
+/// Convierte la URL relativa que devuelve el backend para una imagen subida
+/// (fotos de carga, foto de vehículo - Fase 8) en una URL absoluta.
+///
+/// Esas imágenes se sirven vía `UseStaticFiles` en la raíz del host de la API
+/// (`/uploads/...`), fuera de `/api` (ver `AlmacenamientoArchivosService` y
+/// `Program.cs` en FLETAR_BACKEND) - `apiBaseUrl` siempre termina en `/api`,
+/// así que alcanza con sacarlo. Mismo criterio que `_ubicacionHubUrl` en
+/// ubicacion_providers.dart para el hub de SignalR, que también vive fuera
+/// de `/api`.
+String resolverUrlMedia(String urlRelativa) {
+  if (urlRelativa.startsWith('http://') || urlRelativa.startsWith('https://')) return urlRelativa;
+  final host = apiBaseUrl.replaceFirst(RegExp(r'/api/?$'), '');
+  return '$host$urlRelativa';
+}

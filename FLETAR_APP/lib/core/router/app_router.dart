@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,16 +12,38 @@ import '../../features/publicaciones/domain/publicacion.dart';
 import '../../features/publicaciones/presentation/publicacion_create_screen.dart';
 import '../../features/publicaciones/presentation/publicacion_detail_screen.dart';
 import '../../features/publicaciones/presentation/publicaciones_list_screen.dart';
+import '../../features/usuarios/presentation/mi_perfil_screen.dart';
+import '../../features/usuarios/presentation/usuario_publico_screen.dart';
+
+/// Puente entre `authControllerProvider` y el `refreshListenable` que espera
+/// GoRouter. Antes, `routerProvider` leía el estado de auth con `ref.watch` y
+/// construía un `GoRouter` NUEVO en cada rebuild - cualquier cambio de estado
+/// del usuario logueado (no sólo login/logout: `actualizarFotoUrl` tras subir
+/// una foto de perfil también cuenta) tiraba abajo la instancia vieja y la
+/// reemplazaba por una con `initialLocation: '/'`, así que la navegación
+/// saltaba al inicio sin ningún error visible. Con este notifier el
+/// `GoRouter` se crea una sola vez; `refreshListenable` le avisa que vuelva a
+/// evaluar `redirect` sin recrear nada ni perder la ubicación actual.
+class _RouterRefreshNotifier extends ChangeNotifier {
+  _RouterRefreshNotifier(Ref ref) {
+    ref.listen(authControllerProvider, (previous, next) => notifyListeners());
+  }
+}
+
+final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) => _RouterRefreshNotifier(ref));
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authControllerProvider);
-  final estaLogueado = authState.valueOrNull != null;
-  final esAdmin = authState.valueOrNull?.esAdmin ?? false;
-  final estaCargando = authState.isLoading;
+  final refreshNotifier = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: refreshNotifier,
     redirect: (context, state) {
+      final authState = ref.read(authControllerProvider);
+      final estaLogueado = authState.valueOrNull != null;
+      final esAdmin = authState.valueOrNull?.esAdmin ?? false;
+      final estaCargando = authState.isLoading;
+
       if (estaCargando) return null;
 
       final vaAPantallaPublica = state.matchedLocation == '/login' || state.matchedLocation == '/register';
@@ -63,6 +86,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(path: '/admin', builder: (context, state) => const AdminHomeScreen()),
+      GoRoute(path: '/perfil', builder: (context, state) => const MiPerfilScreen()),
+      GoRoute(
+        path: '/usuarios/:id',
+        builder: (context, state) {
+          final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
+          return UsuarioPublicoScreen(usuarioId: id);
+        },
+      ),
       GoRoute(
         path: '/ofertas/:id/chat',
         builder: (context, state) {

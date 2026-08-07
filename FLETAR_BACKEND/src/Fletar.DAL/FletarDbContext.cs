@@ -18,6 +18,7 @@ public class FletarDbContext : DbContext
     public DbSet<Calificacion> Calificaciones => Set<Calificacion>();
     public DbSet<Reporte> Reportes => Set<Reporte>();
     public DbSet<Mensaje> Mensajes => Set<Mensaje>();
+    public DbSet<PublicacionFoto> PublicacionFotos => Set<PublicacionFoto>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -88,6 +89,12 @@ public class FletarDbContext : DbContext
             b.HasOne<Oferta>().WithMany().HasForeignKey(m => m.OfertaId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne<Usuario>().WithMany().HasForeignKey(m => m.RemitenteId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(m => new { m.OfertaId, m.FechaEnvio });
+        });
+
+        modelBuilder.Entity<PublicacionFoto>(b =>
+        {
+            b.HasOne<Publicacion>().WithMany().HasForeignKey(f => f.PublicacionId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(f => new { f.PublicacionId, f.Orden });
         });
     }
 }

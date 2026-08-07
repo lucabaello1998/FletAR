@@ -12,6 +12,13 @@ public class Usuario
     public string Nombre { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string? Telefono { get; set; }
+
+    /// Foto del vehículo del propio usuario (Fase 8) - señal de confianza para
+    /// cuando ofrece un flete como fletero, visible en su perfil público
+    /// (UsuarioPublicoResponse.FotoUrl). Una sola foto por usuario, no una
+    /// galería (a diferencia de PublicacionFoto) - se reemplaza entera cada
+    /// vez que sube una nueva (PUT /api/usuarios/me/foto-vehiculo), la vieja
+    /// se borra del disco. Null si nunca subió una.
     public string? FotoUrl { get; set; }
 
     /// Null para una cuenta que solo se registró con Google - no tiene

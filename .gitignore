@@ -5,6 +5,11 @@ FLETAR_BACKEND/.env
 FLETAR_BACKEND/**/firebase-service-account.json
 *.user
 
+# Fotos subidas por usuarios (Fase 8) - contenido generado en runtime, no
+# código fuente. Program.cs crea las subcarpetas (publicaciones/, vehiculos/)
+# solo si no existen, así que no hace falta un .gitkeep.
+FLETAR_BACKEND/src/Fletar.API/uploads/
+
 # Flutter / Dart
 FLETAR_APP/.dart_tool/
 FLETAR_APP/.flutter-plugins

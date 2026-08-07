@@ -1,7 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../../core/archivos/imagen_mime.dart';
 import '../domain/categoria_carga.dart';
 import '../domain/publicacion.dart';
+import '../domain/publicacion_foto.dart';
 import '../domain/tipo_vehiculo.dart';
 
 class PublicacionesApi {
@@ -126,6 +129,25 @@ class PublicacionesApi {
         .map((e) => TipoVehiculo.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  // Fotos de carga (Fase 8) - sólo el dueño puede agregar/borrar (lo valida
+  // el backend, esto no duplica esa regla), públicas para cualquiera que vea
+  // el detalle.
+  Future<PublicacionFoto> agregarFoto(int publicacionId, XFile archivo) async {
+    final bytes = await archivo.readAsBytes();
+    final formData = FormData.fromMap({
+      'archivo': MultipartFile.fromBytes(
+        bytes,
+        filename: archivo.name,
+        contentType: mimeTypeDeImagen(nombreArchivo: archivo.name, mimeTypeConocido: archivo.mimeType),
+      ),
+    });
+    final response = await _dio.post('/publicaciones/$publicacionId/fotos', data: formData);
+    return PublicacionFoto.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> eliminarFoto(int publicacionId, int fotoId) =>
+      _dio.delete('/publicaciones/$publicacionId/fotos/$fotoId');
 
   List<Publicacion> _listaDesdeResponse(dynamic data) =>
       (data as List).map((e) => Publicacion.fromJson(e as Map<String, dynamic>)).toList();

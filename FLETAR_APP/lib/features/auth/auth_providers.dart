@@ -168,6 +168,24 @@ class AuthController extends AsyncNotifier<Usuario?> {
     });
   }
 
+  /// Actualiza en memoria la `fotoUrl` del usuario logueado (Fase 8, tras
+  /// subir/reemplazar su foto de vehículo) sin necesitar un endpoint
+  /// `/usuarios/me` que devuelva el usuario completo (ver CLAUDE.md, gap
+  /// conocido: la sesión no persiste tras un reload en frío tampoco por esto
+  /// mismo). No hace nada si por algún motivo no hay sesión activa.
+  void actualizarFotoUrl(String? nuevaFotoUrl) {
+    final actual = state.valueOrNull;
+    if (actual == null) return;
+    state = AsyncData(Usuario(
+      id: actual.id,
+      nombre: actual.nombre,
+      email: actual.email,
+      rol: actual.rol,
+      telefono: actual.telefono,
+      fotoUrl: nuevaFotoUrl,
+    ));
+  }
+
   Future<void> logout() async {
     final tokenStorage = ref.read(tokenStorageProvider);
     final refreshToken = await tokenStorage.leerRefreshToken();

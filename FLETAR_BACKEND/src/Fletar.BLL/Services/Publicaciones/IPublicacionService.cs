@@ -1,4 +1,5 @@
 using Fletar.DTO.Publicaciones;
+using Microsoft.AspNetCore.Http;
 
 namespace Fletar.BLL.Services.Publicaciones;
 
@@ -13,4 +14,10 @@ public interface IPublicacionService
     Task CancelarComoAdminAsync(int id);
     Task<IReadOnlyList<CategoriaCargaResponse>> ListarCategoriasAsync();
     Task<IReadOnlyList<TipoVehiculoResponse>> ListarTiposVehiculoAsync();
+
+    /// Agrega una foto de carga a la publicación - sólo el dueño (Fase 8).
+    Task<PublicacionFotoResponse> AgregarFotoAsync(int publicacionId, int usuarioId, IFormFile archivo);
+
+    /// Borra una foto de carga (registro + archivo en disco) - sólo el dueño (Fase 8).
+    Task EliminarFotoAsync(int publicacionId, int fotoId, int usuarioId);
 }

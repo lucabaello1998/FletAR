@@ -1,6 +1,7 @@
 using Fletar.BLL.Services.Usuarios;
 using Fletar.DTO.Usuarios;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Fletar.API.Controllers;
@@ -24,4 +25,12 @@ public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
         await usuarioService.RegistrarFcmTokenAsync(this.UsuarioIdActual(), request.Token);
         return NoContent();
     }
+
+    // Foto de vehículo (Fase 8) - señal de confianza para cuando este usuario
+    // oferta como fletero. Una sola por usuario, siempre sobre el propio
+    // usuario logueado (nunca se recibe un id en la ruta) - reemplaza la
+    // anterior si tenía.
+    [HttpPut("me/foto-vehiculo")]
+    public async Task<ActionResult<FotoVehiculoResponse>> ActualizarFotoVehiculo(IFormFile archivo)
+        => Ok(await usuarioService.ActualizarFotoVehiculoAsync(this.UsuarioIdActual(), archivo));
 }

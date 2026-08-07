@@ -1,11 +1,13 @@
+using Fletar.BLL.Services.Archivos;
 using Fletar.DAL;
 using Fletar.DAL.Models;
 using Fletar.DTO.Usuarios;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fletar.BLL.Services.Usuarios;
 
-public class UsuarioService(FletarDbContext db) : IUsuarioService
+public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService almacenamiento) : IUsuarioService
 {
     public async Task<UsuarioPublicoResponse> ObtenerPerfilPublicoAsync(int id)
     {
@@ -96,6 +98,25 @@ public class UsuarioService(FletarDbContext db) : IUsuarioService
         var usuario = await BuscarOFallarAsync(id);
         usuario.FcmToken = string.IsNullOrWhiteSpace(token) ? null : token;
         await db.SaveChangesAsync();
+    }
+
+    public async Task<FotoVehiculoResponse> ActualizarFotoVehiculoAsync(int id, IFormFile archivo)
+    {
+        var usuario = await BuscarOFallarAsync(id);
+
+        var nombreNuevo = await almacenamiento.GuardarImagenAsync(archivo, CarpetasDeArchivos.Vehiculos);
+
+        // Reemplaza la foto anterior (si tenía) - una sola foto de vehículo
+        // por usuario, no una galería como PublicacionFoto. FotoUrl guarda la
+        // URL relativa completa (p. ej. "/uploads/vehiculos/{guid}.jpg"), pero
+        // Eliminar toma sólo el nombre de archivo (Path.GetFileName la limpia
+        // igual, así que pasarle la URL entera funciona sin parsing extra).
+        almacenamiento.Eliminar(CarpetasDeArchivos.Vehiculos, usuario.FotoUrl);
+
+        usuario.FotoUrl = almacenamiento.ConstruirUrlRelativa(CarpetasDeArchivos.Vehiculos, nombreNuevo);
+        await db.SaveChangesAsync();
+
+        return new FotoVehiculoResponse { Url = usuario.FotoUrl };
     }
 
     private async Task<Usuario> BuscarOFallarAsync(int id)
