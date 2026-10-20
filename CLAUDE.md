@@ -97,6 +97,30 @@ aprobar, rechazar con motivo); el perfil público muestra la insignia
 tests de widget de las dos pantallas, además de `dotnet build` y los health
 tests del backend.
 
+**Endurecimiento post-auditoría (20/10/2026)** — backend:
+- Desactivar una cuenta corta la sesión en el acto: el filtro de JWT valida
+  `Activo` en cada request (también en el handshake de SignalR) y el refresh
+  revoca la familia entera de tokens.
+- Límites anti-abuso: 120 pedidos/min por usuario (o por IP si no hay sesión) y
+  10/min por IP en `/api/auth/*` contra fuerza bruta; respuesta 429 con
+  `Retry-After`.
+- GPS: la autorización para ver a un fletero no sobrevive al viaje (sólo oferta
+  Aceptada con publicación OfertaAceptada/EnCurso, o Pendiente con publicación
+  Publicada) y una posición guardada de hace más de 5 minutos no se devuelve.
+- Tests: 13 en el backend (health, reglas de GPS, sesión cortada con base en
+  memoria) y 16 de widget en Flutter.
+
+**Release Android firmado** — el keystore vive en `.secrets/` (no versionado;
+ver `.secrets/LEEME.txt` para la contraseña, el alias y el backup). 
+`FLETAR_APP/android/key.properties` (también ignorado) apunta ahí; si no existe,
+el build de release cae a la clave de debug. Para publicar:
+
+```
+cd FLETAR_APP
+flutter build appbundle --release --dart-define=FLETAR_API_URL=https://TU-DOMINIO/api
+flutter build apk --release --dart-define=FLETAR_API_URL=https://TU-DOMINIO/api
+```
+
 **Sin arrancar:** pagos, lo único que queda del roadmap original por fuera del MVP.
 
 ## Stack
