@@ -89,8 +89,13 @@ registra en `UseStaticFiles`, sólo se descarga por un endpoint de admin), una f
 por usuario, estados Pendiente/Aprobada/Rechazada, endpoints propios en
 `/api/usuarios/me/verificacion-identidad` y moderación en
 `/api/admin/verificaciones-identidad` (listar, descargar documento, aprobar,
-rechazar con comentario). Falta la pantalla en Flutter y el flujo de admin en la
-app; el backend quedó cubierto por `dotnet build` y los health tests.
+rechazar con comentario). La pantalla de verificación existe en Flutter (Mi
+perfil → Verificación de identidad: subir frente y dorso, ver estado y motivo de
+rechazo) y el panel admin tiene la pestaña *Identidad* (ver documentos privados,
+aprobar, rechazar con motivo); el perfil público muestra la insignia
+"Identidad verificada". Cubierto por `flutter analyze`, `flutter build web` y
+tests de widget de las dos pantallas, además de `dotnet build` y los health
+tests del backend.
 
 **Sin arrancar:** pagos, lo único que queda del roadmap original por fuera del MVP.
 
