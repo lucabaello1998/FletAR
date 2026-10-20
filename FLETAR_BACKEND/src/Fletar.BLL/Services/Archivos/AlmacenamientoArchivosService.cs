@@ -21,7 +21,7 @@ public class AlmacenamientoArchivosService(AlmacenamientoSettings settings) : IA
         ["image/webp"] = ".webp"
     };
 
-    public async Task<string> GuardarImagenAsync(IFormFile archivo, string subcarpeta)
+    public async Task<string> GuardarImagenAsync(IFormFile archivo, string subcarpeta, bool privado = false)
     {
         if (archivo is null || archivo.Length == 0)
             throw new InvalidOperationException("No se recibió ningún archivo.");
@@ -47,7 +47,7 @@ public class AlmacenamientoArchivosService(AlmacenamientoSettings settings) : IA
         // colisiones entre dos usuarios subiendo un archivo con el mismo
         // nombre original.
         var nombreGenerado = $"{Guid.NewGuid():N}{extension}";
-        var carpetaDestino = Path.Combine(settings.RutaRaizUploads, subcarpeta);
+        var carpetaDestino = Path.Combine(RaizPara(privado), subcarpeta);
         Directory.CreateDirectory(carpetaDestino);
         var rutaDestino = Path.Combine(carpetaDestino, nombreGenerado);
 
@@ -57,7 +57,7 @@ public class AlmacenamientoArchivosService(AlmacenamientoSettings settings) : IA
         return nombreGenerado;
     }
 
-    public void Eliminar(string subcarpeta, string? nombreArchivo)
+    public void Eliminar(string subcarpeta, string? nombreArchivo, bool privado = false)
     {
         if (string.IsNullOrWhiteSpace(nombreArchivo))
             return;
@@ -71,13 +71,21 @@ public class AlmacenamientoArchivosService(AlmacenamientoSettings settings) : IA
         if (string.IsNullOrWhiteSpace(nombreSeguro))
             return;
 
-        var ruta = Path.Combine(settings.RutaRaizUploads, subcarpeta, nombreSeguro);
+        var ruta = Path.Combine(RaizPara(privado), subcarpeta, nombreSeguro);
         if (File.Exists(ruta))
             File.Delete(ruta);
     }
 
     public string ConstruirUrlRelativa(string subcarpeta, string nombreArchivo)
         => $"/uploads/{subcarpeta}/{nombreArchivo}";
+
+    public string ObtenerRutaFisica(string subcarpeta, string nombreArchivo, bool privado = false)
+    {
+        var nombreSeguro = Path.GetFileName(nombreArchivo);
+        return Path.Combine(RaizPara(privado), subcarpeta, nombreSeguro);
+    }
+
+    private string RaizPara(bool privado) => privado ? settings.RutaPrivados : settings.RutaPublicos;
 
     private static bool TieneFirmaValida(byte[] encabezado, string extension) => extension switch
     {

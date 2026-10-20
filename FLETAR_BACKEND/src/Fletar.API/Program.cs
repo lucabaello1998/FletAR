@@ -63,16 +63,22 @@ var firebaseSettings = new FirebaseSettings(Environment.GetEnvironmentVariable("
 if (firebaseSettings.EstaConfigurado)
     FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
 
-// Uploads de usuarios (fotos de carga/vehículo, Fase 8) - ver AlmacenamientoSettings
-// para el porqué de disco local en vez de un blob storage en la nube. Carpeta
-// "uploads/" a secas dentro de Fletar.API (no wwwroot): no se activa la
-// convención genérica de wwwroot/UseStaticFiles() sin argumentos, que serviría
-// cualquier cosa que alguien deje ahí - en su lugar más abajo se registra un
-// PhysicalFileProvider apuntado únicamente a esta carpeta puntual.
+// Uploads de usuarios (fotos de carga/vehículo, Fase 8; documentos de
+// identidad, Fase 9) - ver AlmacenamientoSettings para el porqué de disco
+// local en vez de un blob storage en la nube. Carpeta "uploads/" a secas
+// dentro de Fletar.API (no wwwroot), partida en dos sub-raíces:
+// "uploads/publico/" (fotos de carga/vehículo - servida más abajo por un
+// PhysicalFileProvider explícito) y "uploads/privado/" (documentos de
+// identidad - JAMÁS registrada en ningún middleware de archivos estáticos,
+// son sensibles y sólo se leen vía un endpoint autenticado, ver
+// VerificacionIdentidadService.ObtenerDocumentoAsync + AdminController). No se
+// activa la convención genérica de wwwroot/UseStaticFiles() sin argumentos,
+// que serviría cualquier cosa que alguien deje ahí.
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
-Directory.CreateDirectory(Path.Combine(uploadsPath, "publicaciones"));
-Directory.CreateDirectory(Path.Combine(uploadsPath, "vehiculos"));
 var almacenamientoSettings = new AlmacenamientoSettings(uploadsPath);
+Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPublicos, "publicaciones"));
+Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPublicos, "vehiculos"));
+Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPrivados, "documentos-identidad"));
 
 builder.Services.AddBusinessLayer(connectionString, jwtSettings, googleSettings, firebaseSettings, almacenamientoSettings);
 builder.Services.AddSignalR();
@@ -158,21 +164,24 @@ else
 app.UseHttpsRedirection();
 app.UseCors(PoliticaCorsWeb);
 
-// Uploads de usuarios (fotos de carga/vehículo, Fase 8) - servidos como
-// archivos estáticos, pero SCOPEADOS explícitamente a esta única carpeta
-// (PhysicalFileProvider apunta sólo a `uploads/`, no a wwwroot completo ni al
-// resto del proyecto) para no reabrir la puerta que CLAUDE.md cierra a
-// propósito ("FletAR no sirve un frontend propio desde la API" - ver
+// Uploads PÚBLICOS de usuarios (fotos de carga/vehículo, Fase 8) - servidos
+// como archivos estáticos, pero SCOPEADOS explícitamente a
+// AlmacenamientoSettings.RutaPublicos ("uploads/publico/"), nunca a wwwroot
+// completo, al resto del proyecto, ni a "uploads/privado/" (documentos de
+// identidad, Fase 9 - ver más arriba, esa carpeta no se registra en ningún
+// middleware de archivos estáticos) para no reabrir la puerta que CLAUDE.md
+// cierra a propósito ("FletAR no sirve un frontend propio desde la API" - ver
 // Estructura del repositorio). Esto es sólo para contenido subido por
-// usuarios, nunca para servir el build de Flutter web ni un index.html: no
-// hay UseDefaultFiles ni fallback de SPA acá. Va después de UseCors (no
-// antes) para que las respuestas de imagen salgan con los headers CORS
-// correspondientes - si no, un <img> cargado desde Flutter web con el
-// renderer CanvasKit (que trae los bytes por fetch/XHR, no un <img> plano)
-// se rompería por falta de Access-Control-Allow-Origin.
+// usuarios que es explícitamente público, nunca para servir el build de
+// Flutter web ni un index.html: no hay UseDefaultFiles ni fallback de SPA
+// acá. Va después de UseCors (no antes) para que las respuestas de imagen
+// salgan con los headers CORS correspondientes - si no, un <img> cargado
+// desde Flutter web con el renderer CanvasKit (que trae los bytes por
+// fetch/XHR, no un <img> plano) se rompería por falta de
+// Access-Control-Allow-Origin.
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(uploadsPath),
+    FileProvider = new PhysicalFileProvider(almacenamientoSettings.RutaPublicos),
     RequestPath = "/uploads"
 });
 

@@ -22,4 +22,17 @@ namespace Fletar.BLL.Settings;
 public class AlmacenamientoSettings(string rutaRaizUploads)
 {
     public string RutaRaizUploads { get; } = rutaRaizUploads;
+
+    /// Sub-raíz servida públicamente vía UseStaticFiles en Program.cs (fotos de
+    /// carga/vehículo, Fase 8) - todo lo que cuelga de acá es alcanzable sin
+    /// autenticar, por diseño.
+    public string RutaPublicos { get; } = Path.Combine(rutaRaizUploads, "publico");
+
+    /// Sub-raíz que NUNCA se registra en UseStaticFiles ni en ningún otro
+    /// middleware de archivos estáticos (documentos de identidad, Fase 9) - la
+    /// única forma de leer algo de acá es un endpoint autenticado que valide
+    /// ownership/rol y devuelva el archivo a mano (PhysicalFile/File). Ver
+    /// Program.cs: el PhysicalFileProvider de estáticos apunta sólo a
+    /// RutaPublicos, jamás a esta carpeta.
+    public string RutaPrivados { get; } = Path.Combine(rutaRaizUploads, "privado");
 }

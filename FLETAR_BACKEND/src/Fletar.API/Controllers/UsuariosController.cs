@@ -1,5 +1,7 @@
 using Fletar.BLL.Services.Usuarios;
+using Fletar.BLL.Services.VerificacionesIdentidad;
 using Fletar.DTO.Usuarios;
+using Fletar.DTO.VerificacionesIdentidad;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -8,7 +10,8 @@ namespace Fletar.API.Controllers;
 
 [ApiController]
 [Route("api/usuarios")]
-public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
+public class UsuariosController(IUsuarioService usuarioService, IVerificacionIdentidadService verificacionService)
+    : ControllerBase
 {
     // Perfil público de reputación: cualquiera (logueado o no) tiene que poder
     // ver con quién está tratando antes de ofertar/calificar.
@@ -33,4 +36,20 @@ public class UsuariosController(IUsuarioService usuarioService) : ControllerBase
     [HttpPut("me/foto-vehiculo")]
     public async Task<ActionResult<FotoVehiculoResponse>> ActualizarFotoVehiculo(IFormFile archivo)
         => Ok(await usuarioService.ActualizarFotoVehiculoAsync(this.UsuarioIdActual(), archivo));
+
+    // Verificación de identidad (Fase 9) - documentos sensibles (frente+dorso),
+    // guardados siempre "privados" (ver IAlmacenamientoArchivosService): a
+    // diferencia de la foto de vehículo de arriba, éstos NUNCA quedan
+    // alcanzables por una URL pública. Sólo el propio usuario puede subir/ver
+    // su estado acá; sólo un Admin puede ver los archivos o aprobar/rechazar
+    // (AdminController). "frente"/"dorso" son los nombres de campo del
+    // multipart - el binding de IFormFile los toma por nombre de parámetro.
+    [HttpPost("me/verificacion-identidad")]
+    public async Task<ActionResult<VerificacionIdentidadResponse>> SolicitarVerificacionIdentidad(
+        IFormFile frente, IFormFile dorso)
+        => Ok(await verificacionService.SolicitarAsync(this.UsuarioIdActual(), frente, dorso));
+
+    [HttpGet("me/verificacion-identidad")]
+    public async Task<ActionResult<VerificacionIdentidadResponse>> ObtenerVerificacionIdentidadPropia()
+        => Ok(await verificacionService.ObtenerPropiaAsync(this.UsuarioIdActual()));
 }

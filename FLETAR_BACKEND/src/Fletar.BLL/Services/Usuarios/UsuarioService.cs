@@ -19,13 +19,17 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
             .Select(c => c.Puntaje)
             .ToListAsync();
 
+        var estaVerificado = await db.VerificacionesIdentidad
+            .AnyAsync(v => v.UsuarioId == id && v.Estado == EstadoVerificacionIdentidad.Aprobada);
+
         return new UsuarioPublicoResponse
         {
             Id = usuario.Id,
             Nombre = usuario.Nombre,
             FotoUrl = usuario.FotoUrl,
             PromedioCalificacion = puntajes.Count == 0 ? null : puntajes.Average(),
-            CantidadCalificaciones = puntajes.Count
+            CantidadCalificaciones = puntajes.Count,
+            EstaVerificado = estaVerificado
         };
     }
 

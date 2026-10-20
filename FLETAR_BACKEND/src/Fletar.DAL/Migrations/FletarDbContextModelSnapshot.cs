@@ -467,6 +467,45 @@ namespace Fletar.DAL.Migrations
                     b.ToTable("Usuarios");
                 });
 
+            modelBuilder.Entity("Fletar.DAL.Models.VerificacionIdentidad", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ComentarioAdmin")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Estado")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("FechaRevision")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("FechaSolicitud")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NombreArchivoDorso")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NombreArchivoFrente")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UsuarioId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UsuarioId")
+                        .IsUnique();
+
+                    b.ToTable("VerificacionesIdentidad");
+                });
+
             modelBuilder.Entity("Fletar.DAL.Models.Calificacion", b =>
                 {
                     b.HasOne("Fletar.DAL.Models.Publicacion", null)
@@ -573,6 +612,15 @@ namespace Fletar.DAL.Migrations
                         .WithMany()
                         .HasForeignKey("UsuarioReportanteId")
                         .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fletar.DAL.Models.VerificacionIdentidad", b =>
+                {
+                    b.HasOne("Fletar.DAL.Models.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 #pragma warning restore 612, 618

@@ -83,9 +83,16 @@ cliente). A diferencia de la Fase 7, esta vez la verificación final sí encontr
 dos bugs reales — ver *Fase 8* para el detalle — ambos arreglados aparte,
 directo, apenas se detectaron.
 
-**Sin arrancar:** nada del roadmap del MVP original (ver *Roadmap*) — lo que sigue
-(verificación de identidad, pagos) se está agregando por fuera de ese roadmap, a
-pedido, fase por fase.
+**Fase 9 (verificación de identidad)** — backend completo: frente y dorso subidos
+por el usuario a `uploads/privado/documentos-identidad/` (esa carpeta no se
+registra en `UseStaticFiles`, sólo se descarga por un endpoint de admin), una fila
+por usuario, estados Pendiente/Aprobada/Rechazada, endpoints propios en
+`/api/usuarios/me/verificacion-identidad` y moderación en
+`/api/admin/verificaciones-identidad` (listar, descargar documento, aprobar,
+rechazar con comentario). Falta la pantalla en Flutter y el flujo de admin en la
+app; el backend quedó cubierto por `dotnet build` y los health tests.
+
+**Sin arrancar:** pagos, lo único que queda del roadmap original por fuera del MVP.
 
 ## Stack
 

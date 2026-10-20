@@ -9,6 +9,7 @@ using Fletar.BLL.Services.Ofertas;
 using Fletar.BLL.Services.Publicaciones;
 using Fletar.BLL.Services.Reportes;
 using Fletar.BLL.Services.Usuarios;
+using Fletar.BLL.Services.VerificacionesIdentidad;
 using Fletar.BLL.Settings;
 using Fletar.DAL;
 using Microsoft.Extensions.DependencyInjection;
@@ -40,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IFcmSenderService, FcmSenderService>();
         services.AddScoped<IMensajeService, MensajeService>();
         services.AddScoped<IAlmacenamientoArchivosService, AlmacenamientoArchivosService>();
+        services.AddScoped<IVerificacionIdentidadService, VerificacionIdentidadService>();
 
         return services;
     }

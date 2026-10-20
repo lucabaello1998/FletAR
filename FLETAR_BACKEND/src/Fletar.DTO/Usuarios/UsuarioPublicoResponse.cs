@@ -11,4 +11,10 @@ public class UsuarioPublicoResponse
     public string? FotoUrl { get; set; }
     public double? PromedioCalificacion { get; set; }
     public int CantidadCalificaciones { get; set; }
+
+    /// Señal de confianza adicional a la reputación (Fase 3) y a la foto de
+    /// vehículo (Fase 8) - true sólo si existe una VerificacionIdentidad
+    /// Aprobada para este usuario (Fase 9). No es una columna propia de
+    /// Usuario: se deriva en UsuarioService.ObtenerPerfilPublicoAsync.
+    public bool EstaVerificado { get; set; }
 }

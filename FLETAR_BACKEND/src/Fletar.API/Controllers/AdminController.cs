@@ -2,9 +2,11 @@ using Fletar.BLL.Services.Admin;
 using Fletar.BLL.Services.Publicaciones;
 using Fletar.BLL.Services.Reportes;
 using Fletar.BLL.Services.Usuarios;
+using Fletar.BLL.Services.VerificacionesIdentidad;
 using Fletar.DTO.Admin;
 using Fletar.DTO.Reportes;
 using Fletar.DTO.Usuarios;
+using Fletar.DTO.VerificacionesIdentidad;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -22,7 +24,8 @@ public class AdminController(
     IReporteService reporteService,
     IPublicacionService publicacionService,
     IUsuarioService usuarioService,
-    IAdminService adminService) : ControllerBase
+    IAdminService adminService,
+    IVerificacionIdentidadService verificacionService) : ControllerBase
 {
     [HttpGet("reportes")]
     public async Task<ActionResult<IReadOnlyList<ReporteResponse>>> ListarReportes([FromQuery] string? estado)
@@ -71,4 +74,36 @@ public class AdminController(
     [HttpGet("metricas")]
     public async Task<ActionResult<MetricasResponse>> ObtenerMetricas()
         => Ok(await adminService.ObtenerMetricasAsync());
+
+    // Verificación de identidad (Fase 9) - moderación de las solicitudes que
+    // cualquier usuario manda desde POST /api/usuarios/me/verificacion-identidad.
+    [HttpGet("verificaciones-identidad")]
+    public async Task<ActionResult<IReadOnlyList<VerificacionIdentidadAdminResponse>>> ListarVerificacionesIdentidad(
+        [FromQuery] string? estado)
+        => Ok(await verificacionService.ListarAdminAsync(estado));
+
+    // Descarga autorizada de uno de los dos documentos de una solicitud -
+    // NUNCA una URL pública (ver Program.cs: uploads/privado/ no está en el
+    // scope de UseStaticFiles). "lado" es "frente" o "dorso" - se valida en
+    // el service, un valor inválido tira 400 vía ManejadorDeExcepciones.
+    [HttpGet("verificaciones-identidad/{id:int}/documento/{lado}")]
+    public async Task<IActionResult> DescargarDocumentoVerificacion(int id, string lado)
+    {
+        var (rutaFisica, contentType) = await verificacionService.ObtenerDocumentoAsync(id, lado);
+        return PhysicalFile(rutaFisica, contentType);
+    }
+
+    [HttpPost("verificaciones-identidad/{id:int}/aprobar")]
+    public async Task<IActionResult> AprobarVerificacionIdentidad(int id)
+    {
+        await verificacionService.AprobarAsync(id);
+        return NoContent();
+    }
+
+    [HttpPost("verificaciones-identidad/{id:int}/rechazar")]
+    public async Task<IActionResult> RechazarVerificacionIdentidad(int id, VerificacionIdentidadRevisionRequest request)
+    {
+        await verificacionService.RechazarAsync(id, request.Comentario);
+        return NoContent();
+    }
 }
