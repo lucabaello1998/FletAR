@@ -11,8 +11,7 @@ FLETAR_BACKEND/**/firebase-service-account.json
 FLETAR_BACKEND/src/Fletar.API/uploads/
 
 # Flutter / Dart
-FLETAR_APP/.dart_tool/
-FLETAR_APP/.flutter-plugins
+FLETAR_APP/.dart_tool/FLETAR_APP/.flutter-plugins
 FLETAR_APP/.flutter-plugins-dependencies
 FLETAR_APP/.pub-cache/
 FLETAR_APP/.pub/
@@ -33,3 +32,9 @@ FLETAR_APP/**/*.freezed.dart
 *.suo
 .DS_Store
 Thumbs.db
+
+# Firma Android del release (Fase release): el keystore y sus contraseñas viven
+# sólo en la máquina de quien publica, nunca en el repo.
+.secrets/
+FLETAR_APP/android/key.properties
+*.jks
