@@ -1,15 +1,19 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+using System.Threading.RateLimiting;
 using Fletar.API;
 using Fletar.API.Hubs;
 using Fletar.BLL;
 using Fletar.BLL.Hubs;
 using Fletar.BLL.Services.Auth;
 using Fletar.BLL.Settings;
+using Fletar.DAL;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -136,6 +140,30 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                     context.Token = accessToken;
                 return Task.CompletedTask;
+            },
+
+            // Un access token vive 15 minutos: sin este chequeo, desactivar una
+            // cuenta no cortaba la sesión hasta que venciera (o hasta el próximo
+            // refresh). Se valida Activo en cada request - es una consulta por
+            // índice primario y el corte queda inmediato, también para SignalR
+            // (el handshake pasa por acá).
+            OnTokenValidated = async context =>
+            {
+                var sub = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+                if (!int.TryParse(sub, out var usuarioId))
+                {
+                    context.Fail("Token sin usuario.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<FletarDbContext>();
+                var activo = await db.Usuarios.AsNoTracking()
+                    .Where(u => u.Id == usuarioId)
+                    .Select(u => u.Activo)
+                    .SingleOrDefaultAsync();
+
+                if (!activo)
+                    context.Fail("Cuenta deshabilitada.");
             }
         };
     });
@@ -145,6 +173,45 @@ builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build());
+
+// Límites anti-abuso (auditoría post-MVP). Global por usuario autenticado (o
+// por IP si todavía no hay usuario): un techo alto que no molesta en uso real
+// pero corta scripts que crean publicaciones/ofertas/reportes en loop. El
+// login tiene además una política propia mucho más estricta (AuthController).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var usuarioId = context.User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        var particion = usuarioId is null
+            ? $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "desconocida"}"
+            : $"usuario:{usuarioId}";
+
+        return RateLimitPartition.GetFixedWindowLimiter(particion, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+
+    options.AddPolicy("auth", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            $"auth-ip:{context.Connection.RemoteIpAddress?.ToString() ?? "desconocida"}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+        return ValueTask.CompletedTask;
+    };
+});
 
 var app = builder.Build();
 
@@ -190,6 +257,7 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapControllers();
 app.MapHub<UbicacionHub>("/hubs/ubicacion");
 app.MapHub<ChatHub>("/hubs/chat");

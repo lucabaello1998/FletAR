@@ -125,6 +125,14 @@ public class AuthService(
 
         var usuario = await db.Usuarios.SingleAsync(u => u.Id == actual.UsuarioId);
 
+        // Una cuenta desactivada no puede renovar: se corta también la familia
+        // entera, no sólo este refresh, para que no quede ningún token vivo.
+        if (!usuario.Activo)
+        {
+            await RevocarFamiliaAsync(actual.FamiliaId);
+            throw new UnauthorizedAccessException("Cuenta deshabilitada.");
+        }
+
         var (accessToken, expiracion) = jwtTokenGenerator.GenerarAccessToken(usuario);
         var nuevoRefreshTokenCrudo = RefreshTokenHasher.GenerarTokenAleatorio();
 

@@ -17,6 +17,10 @@ namespace Fletar.API.Hubs;
 [Authorize]
 public class UbicacionHub(FletarDbContext db) : Hub
 {
+    /// Una posición guardada más vieja que esto no se devuelve: el fletero que
+    /// cerró la app hace veinte minutos no sigue "en vivo" en el mapa.
+    private static readonly TimeSpan VigenciaUbicacion = TimeSpan.FromMinutes(5);
+
     private static string GrupoDeFletero(int usuarioId) => $"fletero-{usuarioId}";
 
     /// Lo llama el fletero para publicar su posición actual. Actualiza la
@@ -50,21 +54,25 @@ public class UbicacionHub(FletarDbContext db) : Hub
     {
         var llamanteId = UsuarioIdActual();
 
-        var autorizado = await (
+        var vinculos = await (
             from p in db.Publicaciones
             join o in db.Ofertas on p.Id equals o.PublicacionId
-            where p.UsuarioId == llamanteId
-                && o.UsuarioId == usuarioId
-                && (o.Estado == EstadoOferta.Pendiente || o.Estado == EstadoOferta.Aceptada)
-            select p.Id).AnyAsync();
+            where p.UsuarioId == llamanteId && o.UsuarioId == usuarioId
+            select new { Publicacion = p.Estado, Oferta = o.Estado }).ToListAsync();
 
-        if (!autorizado)
+        // La autorización no puede sobrevivir al viaje: cuando la publicación
+        // se completa o se cancela, el dueño deja de ver el GPS del fletero
+        // aunque haya tenido una oferta aceptada.
+        if (!vinculos.Any(v => SeguimientoPermitido(v.Publicacion, v.Oferta)))
             throw new HubException("No podés seguir la ubicación de este usuario.");
 
         await Groups.AddToGroupAsync(Context.ConnectionId, GrupoDeFletero(usuarioId));
 
         var fletero = await db.Usuarios.FindAsync(usuarioId);
         if (fletero?.UltimaLatitud is null || fletero.UltimaLongitud is null || fletero.UltimaUbicacionFecha is null)
+            return null;
+
+        if (fletero.UltimaUbicacionFecha < DateTime.UtcNow - VigenciaUbicacion)
             return null;
 
         return new UbicacionActualResponse
@@ -75,6 +83,17 @@ public class UbicacionHub(FletarDbContext db) : Hub
             Fecha = fletero.UltimaUbicacionFecha.Value
         };
     }
+
+    /// Quién puede ver el GPS de quién:
+    /// - oferta Aceptada: sólo mientras el viaje está por empezar o en curso;
+    /// - oferta Pendiente: sólo mientras la publicación sigue abierta (evaluando).
+    /// Rechazada, Retirada, Completada o Cancelada no dan acceso nunca.
+    public static bool SeguimientoPermitido(EstadoPublicacion publicacion, EstadoOferta oferta) => oferta switch
+    {
+        EstadoOferta.Aceptada => publicacion is EstadoPublicacion.OfertaAceptada or EstadoPublicacion.EnCurso,
+        EstadoOferta.Pendiente => publicacion == EstadoPublicacion.Publicada,
+        _ => false
+    };
 
     /// Se llama al salir de la pantalla de tracking, para dejar de recibir
     /// actualizaciones de este fletero.

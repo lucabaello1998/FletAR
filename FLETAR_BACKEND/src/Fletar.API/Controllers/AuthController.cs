@@ -2,11 +2,15 @@ using Fletar.BLL.Services.Auth;
 using Fletar.DTO.Auth;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Fletar.API.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+// Login, registro y refresh son el blanco natural de fuerza bruta: 10 pedidos
+// por minuto y por IP (el resto de la API usa el límite global, mucho más alto).
+[EnableRateLimiting("auth")]
 public class AuthController(IAuthService authService) : ControllerBase
 {
     [AllowAnonymous]

@@ -87,6 +87,15 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
     {
         var usuario = await BuscarOFallarAsync(id);
         usuario.Activo = false;
+
+        // Cortar la sesión del todo: el refresh deja de servir (Program valida
+        // Activo en cada request, así que el access token tampoco alcanza).
+        var tokensVivos = await db.RefreshTokens
+            .Where(rt => rt.UsuarioId == id && rt.FechaRevocacion == null)
+            .ToListAsync();
+        foreach (var token in tokensVivos)
+            token.FechaRevocacion = DateTime.UtcNow;
+
         await db.SaveChangesAsync();
     }
 
