@@ -31,8 +31,31 @@ class UsuarioPublicoScreen extends ConsumerWidget {
                 children: [
                   FotoVehiculoAvatar(fotoUrl: usuario.fotoUrl),
                   const SizedBox(height: 16),
-                  Text(usuario.nombre, style: Theme.of(context).textTheme.headlineSmall),
+                  Text(
+                    usuario.nombre,
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
                   const SizedBox(height: 8),
+                  if (usuario.estaVerificado)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.verified_user,
+                          size: 18,
+                          color: FletarColors.success,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Identidad verificada',
+                          style: TextStyle(
+                            color: FletarColors.success,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (usuario.estaVerificado) const SizedBox(height: 8),
                   if (usuario.tieneCalificaciones)
                     Row(
                       mainAxisSize: MainAxisSize.min,
@@ -43,13 +66,17 @@ class UsuarioPublicoScreen extends ConsumerWidget {
                           '${usuario.promedioCalificacion!.toStringAsFixed(1)} '
                           '(${usuario.cantidadCalificaciones} calificaci'
                           '${usuario.cantidadCalificaciones == 1 ? 'ón' : 'ones'})',
-                          style: const TextStyle(color: FletarColors.mutedForeground),
+                          style: const TextStyle(
+                            color: FletarColors.mutedForeground,
+                          ),
                         ),
                       ],
                     )
                   else
-                    const Text('Todavía no tiene calificaciones',
-                        style: TextStyle(color: FletarColors.mutedForeground)),
+                    const Text(
+                      'Todavía no tiene calificaciones',
+                      style: TextStyle(color: FletarColors.mutedForeground),
+                    ),
                 ],
               ),
             ),
@@ -62,12 +89,17 @@ class UsuarioPublicoScreen extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, size: 48, color: FletarColors.destructive),
+                Icon(
+                  Icons.error_outline,
+                  size: 48,
+                  color: FletarColors.destructive,
+                ),
                 const SizedBox(height: 12),
                 Text(mensajeDeError(error), textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: () => ref.invalidate(usuarioPublicoProvider(usuarioId)),
+                  onPressed: () =>
+                      ref.invalidate(usuarioPublicoProvider(usuarioId)),
                   child: const Text('Reintentar'),
                 ),
               ],

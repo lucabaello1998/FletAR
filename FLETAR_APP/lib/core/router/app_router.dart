@@ -14,6 +14,7 @@ import '../../features/publicaciones/presentation/publicacion_detail_screen.dart
 import '../../features/publicaciones/presentation/publicaciones_list_screen.dart';
 import '../../features/usuarios/presentation/mi_perfil_screen.dart';
 import '../../features/usuarios/presentation/usuario_publico_screen.dart';
+import '../../features/usuarios/presentation/verificacion_identidad_screen.dart';
 
 /// Puente entre `authControllerProvider` y el `refreshListenable` que espera
 /// GoRouter. Antes, `routerProvider` leía el estado de auth con `ref.watch` y
@@ -30,7 +31,9 @@ class _RouterRefreshNotifier extends ChangeNotifier {
   }
 }
 
-final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) => _RouterRefreshNotifier(ref));
+final _routerRefreshProvider = Provider<_RouterRefreshNotifier>(
+  (ref) => _RouterRefreshNotifier(ref),
+);
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ref.watch(_routerRefreshProvider);
@@ -46,7 +49,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (estaCargando) return null;
 
-      final vaAPantallaPublica = state.matchedLocation == '/login' || state.matchedLocation == '/register';
+      final vaAPantallaPublica =
+          state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register';
       if (!estaLogueado && !vaAPantallaPublica) return '/login';
       if (estaLogueado && vaAPantallaPublica) return '/';
       // El panel admin se gatea por rol, no por plataforma: la autorización real
@@ -56,9 +61,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/', builder: (context, state) => const PublicacionesListScreen()),
+      GoRoute(
+        path: '/',
+        builder: (context, state) => const PublicacionesListScreen(),
+      ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-      GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
       GoRoute(
         path: '/publicaciones/nueva',
         builder: (context, state) => const PublicacionCreateScreen(),
@@ -85,8 +96,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           return PublicacionCreateScreen(publicacionAEditar: publicacion);
         },
       ),
-      GoRoute(path: '/admin', builder: (context, state) => const AdminHomeScreen()),
-      GoRoute(path: '/perfil', builder: (context, state) => const MiPerfilScreen()),
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminHomeScreen(),
+      ),
+      GoRoute(
+        path: '/perfil',
+        builder: (context, state) => const MiPerfilScreen(),
+      ),
+      GoRoute(
+        path: '/perfil/verificacion',
+        builder: (context, state) => const VerificacionIdentidadScreen(),
+      ),
       GoRoute(
         path: '/usuarios/:id',
         builder: (context, state) {

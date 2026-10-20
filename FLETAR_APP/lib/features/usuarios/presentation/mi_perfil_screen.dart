@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
 import '../../auth/auth_providers.dart';
+import '../domain/verificacion_identidad.dart';
 import '../usuarios_providers.dart';
 import 'foto_vehiculo_avatar.dart';
 import 'reputacion_indicador.dart';
@@ -32,12 +34,17 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
     if (origen == null) return;
 
     try {
-      final archivo = await ImagePicker().pickImage(source: origen, imageQuality: 85);
+      final archivo = await ImagePicker().pickImage(
+        source: origen,
+        imageQuality: 85,
+      );
       if (archivo == null || !mounted) return;
 
       setState(() => _subiendo = true);
       final usuarioId = ref.read(authControllerProvider).valueOrNull?.id;
-      final nuevaUrl = await ref.read(usuariosApiProvider).actualizarFotoVehiculo(archivo);
+      final nuevaUrl = await ref
+          .read(usuariosApiProvider)
+          .actualizarFotoVehiculo(archivo);
       if (!mounted) return;
 
       // Actualiza el estado en memoria (no hay endpoint `/usuarios/me` para
@@ -48,7 +55,9 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
       if (usuarioId != null) ref.invalidate(usuarioPublicoProvider(usuarioId));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensajeDeError(e))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(mensajeDeError(e))));
       }
     } finally {
       if (mounted) setState(() => _subiendo = false);
@@ -80,9 +89,19 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
     );
   }
 
+  String _textoVerificacion(VerificacionIdentidad? verificacion) {
+    if (verificacion == null) return 'Todavía no la pediste';
+    return switch (verificacion.estado) {
+      'Aprobada' => 'Verificada',
+      'Rechazada' => 'Rechazada - podés volver a enviarla',
+      _ => 'En revisión',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final usuario = ref.watch(authControllerProvider).valueOrNull;
+    final verificacion = ref.watch(verificacionIdentidadProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mi perfil')),
@@ -96,19 +115,46 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
-                        Text(usuario.nombre, style: Theme.of(context).textTheme.headlineSmall),
+                        Text(
+                          usuario.nombre,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
                         const SizedBox(height: 4),
-                        Text(usuario.email, style: const TextStyle(color: FletarColors.mutedForeground)),
+                        Text(
+                          usuario.email,
+                          style: const TextStyle(
+                            color: FletarColors.mutedForeground,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         ReputacionIndicador(usuarioId: usuario.id),
                         const Divider(height: 40),
-                        Text('Foto de tu vehículo', style: Theme.of(context).textTheme.titleMedium),
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: ListTile(
+                            leading: const Icon(Icons.badge_outlined),
+                            title: const Text('Verificación de identidad'),
+                            subtitle: Text(
+                              _textoVerificacion(verificacion.valueOrNull),
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => context.push('/perfil/verificacion'),
+                          ),
+                        ),
+                        const Divider(height: 40),
+                        Text(
+                          'Foto de tu vehículo',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                         const SizedBox(height: 4),
                         const Text(
                           'Es una señal de confianza para quienes evalúan tu oferta cuando '
                           'ofertás como fletero - la ven en tu perfil público.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: FletarColors.mutedForeground, fontSize: 12),
+                          style: TextStyle(
+                            color: FletarColors.mutedForeground,
+                            fontSize: 12,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Stack(
@@ -116,14 +162,20 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
                           children: [
                             FotoVehiculoAvatar(fotoUrl: usuario.fotoUrl),
                             if (_subiendo)
-                              const CircularProgressIndicator(color: FletarColors.primary),
+                              const CircularProgressIndicator(
+                                color: FletarColors.primary,
+                              ),
                           ],
                         ),
                         const SizedBox(height: 16),
                         OutlinedButton.icon(
                           onPressed: _subiendo ? null : _cambiarFotoVehiculo,
                           icon: const Icon(Icons.photo_camera_outlined),
-                          label: Text(usuario.fotoUrl == null ? 'Agregar foto' : 'Cambiar foto'),
+                          label: Text(
+                            usuario.fotoUrl == null
+                                ? 'Agregar foto'
+                                : 'Cambiar foto',
+                          ),
                         ),
                       ],
                     ),
