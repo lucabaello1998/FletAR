@@ -60,7 +60,10 @@ var googleSettings = new GoogleSettings(Environment.GetEnvironmentVariable("FLET
 // Default Credentials de Google - GoogleCredential.GetApplicationDefault() lo lee
 // solo, no hace falta pasarle la ruta a mano.
 var firebaseSettings = new FirebaseSettings(Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS"));
-if (firebaseSettings.EstaConfigurado)
+// Firebase se crea una sola vez por proceso: los tests levantan varios hosts
+// (WebApplicationFactory) y el segundo explotaba con "The default FirebaseApp
+// already exists".
+if (firebaseSettings.EstaConfigurado && FirebaseApp.DefaultInstance is null)
     FirebaseApp.Create(new AppOptions { Credential = GoogleCredential.GetApplicationDefault() });
 
 // Uploads de usuarios (fotos de carga/vehículo, Fase 8; documentos de
