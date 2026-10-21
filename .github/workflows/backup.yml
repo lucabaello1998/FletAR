@@ -1,0 +1,49 @@
+name: Backup
+
+on:
+  schedule:
+    # 03:17 UTC todos los días. GitHub puede demorar unos minutos.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fletar-backup
+  cancel-in-progress: false
+
+jobs:
+  neon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar DATABASE_URL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Falta el secret DATABASE_URL (connection string directa de Neon)."
+            exit 1
+          fi
+
+      - name: pg_dump de Neon
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          mkdir -p backups
+          docker run --rm \
+            -v "$PWD/backups:/backup" \
+            postgres:16 \
+            pg_dump --dbname="$DATABASE_URL" \
+              --format=custom --no-owner --no-privileges \
+              --file="/backup/fletar-$(date -u +%Y%m%d-%H%M%S).dump"
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: fletar-neon-${{ github.run_id }}
+          path: backups/*.dump
+          retention-days: 30
+          if-no-files-found: error

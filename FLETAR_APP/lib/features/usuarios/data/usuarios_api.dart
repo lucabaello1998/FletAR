@@ -20,6 +20,12 @@ class UsuariosApi {
   Future<void> registrarFcmToken(String? token) =>
       _dio.put('/usuarios/me/fcm-token', data: {'token': token});
 
+  /// Elimina la cuenta del usuario logueado. El backend exige la confirmación
+  /// literal "ELIMINAR" y anonimiza la cuenta, borra documentos/fotos y corta
+  /// las sesiones.
+  Future<void> eliminarCuenta() =>
+      _dio.delete('/usuarios/me', data: {'confirmacion': 'ELIMINAR'});
+
   /// Reemplaza la foto de vehículo del usuario logueado (Fase 8) - señal de
   /// confianza para cuando oferta como fletero. Una sola por usuario; el
   /// backend borra la anterior del disco si tenía una. Devuelve la URL

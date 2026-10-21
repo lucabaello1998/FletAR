@@ -9,13 +9,29 @@
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-red?style=flat-square">
 </p>
 
-**FletAR** es un marketplace de fletes y logística liviana en Argentina diseñado para digitalizar la contratación de transporte de carga y mudanzas. Resuelve el problema de la intermediación informal conectando a publicadores con fleteros mediante un esquema de **subasta a ciegas**, reputación pública, geolocalización y seguimiento en tiempo real.
+**FletAR** es un marketplace de fletes y logística liviana en Argentina. Conecta a
+quienes necesitan transportar una carga con fleteros, mediante un esquema de
+**subasta a ciegas**, reputación pública, verificación de identidad, chat y
+seguimiento GPS en tiempo real.
+
+## Estado
+
+- **API en producción:** <https://fletar-production.up.railway.app> — healthcheck
+  [`/api/health`](https://fletar-production.up.railway.app/api/health).
+- **Base:** Neon PostgreSQL + PostGIS, migraciones aplicadas al arrancar.
+- **Uploads:** volumen persistente de Railway en `/data/uploads`.
+- **Android:** AAB y APK release firmados con la key de FletAR y compilados
+  contra la URL pública. La publicación en Google Play sigue pendiente
+  (cuenta de desarrollador, ficha, Data Safety y testing tracks).
+- **Legal:** [Política de Privacidad](https://lucabaello1998.github.io/FletAR/privacidad.html),
+  [Términos y Condiciones](https://lucabaello1998.github.io/FletAR/terminos.html) y
+  [Eliminación de cuenta](https://lucabaello1998.github.io/FletAR/eliminar-cuenta.html).
+- **Eliminación de cuenta:** disponible dentro de la app, en
+  **Mi perfil → Eliminar mi cuenta**, y por la página pública de eliminación.
 
 ---
 
-## 🏗️ Arquitectura y Tecnologías
-
-El proyecto está diseñado bajo una arquitectura desacoplada y orientada al dominio:
+## Arquitectura
 
 ```mermaid
 graph TD
@@ -26,6 +42,7 @@ graph TD
     DB[("PostgreSQL 16 + PostGIS")]
     Hubs["SignalR Hubs (GPS en vivo + Chat)"]
     FCM["Firebase Cloud Messaging (Push Notifications)"]
+    Sentry["Sentry (errores)"]
 
     Client -->|REST API + JWT| API
     Client -->|WebSockets| Hubs
@@ -34,52 +51,69 @@ graph TD
     DAL --> DB
     BLL --> FCM
     BLL --> Hubs
+    API -.-> Sentry
+    Client -.-> Sentry
 ```
 
-### 1. Backend (`FLETAR_BACKEND/`)
-* **Framework**: .NET 8 LTS (C#), ASP.NET Core Web API en capas (`API`, `BLL`, `DAL`, `DTO`).
-* **Base de datos & Geoespacial**: PostgreSQL 16 + **PostGIS** con NetTopologySuite (`geography(Point, 4326)`). Consultas de cercanía eficientes con `ST_DWithin` e índices espaciales GIST.
-* **Seguridad & Auth**:
-  * Flujo JWT con rotación de Refresh Tokens y **detección de reúso de familia** (invalida toda la cadena si se detecta replay attack).
-  * Hasheo de tokens en SHA-256.
-  * Autenticación externa con Google OAuth (validación de ID token con Google API).
-  * Políticas de autorización basadas en Claims (`Admin`, `Usuario`).
-* **Comunicación en Tiempo Real**:
-  * `UbicacionHub`: Transmisión de geolocalización en vivo del fletero con validación de publicación activa.
-  * `ChatHub`: Canal de mensajería cifrado por oferta con autorización estricta entre partes.
-* **Archivos & Media**:
-  * Validación estricta por extensión, MIME type y **Magic Bytes** contra spoofing de archivos.
-  * Almacenamiento aislado público (`uploads/publico/`) y privado con control de acceso (`uploads/privado/`).
+### Backend (`FLETAR_BACKEND/`)
 
-### 2. Aplicación Cliente (`FLETAR_APP/`)
-* **Framework**: Flutter (Multiplataforma: Android, iOS, Web, Windows).
-* **Gestión de Estado**: Riverpod sin generación de código (mantenibilidad y testing predecible).
-* **Navegación & Red**: `go_router` con guardas de autenticación y `Dio` con interceptor de rotación de tokens en vuelo.
-* **Mapas & Ubicación**: `flutter_map` + OpenStreetMap (sin depender de claves pagas de Google Maps).
-* **Seguridad Local**: Almacenamiento seguro de credenciales con `flutter_secure_storage`.
+- **Framework:** .NET 8 LTS (C#), ASP.NET Core Web API en capas (`API`, `BLL`,
+  `DAL`, `DTO`).
+- **Base de datos y geolocalización:** PostgreSQL 16 + **PostGIS** con
+  NetTopologySuite (`geography(Point, 4326)`), consultas de cercanía con
+  `ST_DWithin` e índices espaciales GIST.
+- **Seguridad y auth:**
+  - JWT con rotación de refresh tokens y detección de reúso de familia.
+  - Tokens de refresh hasheados con SHA-256.
+  - Google OAuth (validación del ID token).
+  - Políticas de autorización por claims (`Admin`, `Usuario`).
+  - Rate limiting global por usuario/IP y límite estricto en `/api/auth`.
+  - Eliminación de cuenta con anonimización, borrado de documentos/fotos y
+    revocación de sesiones.
+- **Tiempo real:** `UbicacionHub` para GPS en vivo y `ChatHub` para mensajería
+  por oferta, con autorización entre las partes.
+- **Archivos:** validación de MIME, extensión y magic bytes; almacenamiento
+  público aislado (`uploads/publico/`) y privado para documentos de identidad
+  (`uploads/privado/`).
+- **Monitoreo:** Sentry opcional (`SENTRY_DSN`), sin PII por defecto.
 
----
+### App cliente (`FLETAR_APP/`)
 
-## ✨ Características Principales
-
-1. **Subasta a Ciegas**: Los fleteros envían ofertas sobre las publicaciones sin conocer las ofertas de la competencia, garantizando precios competitivos y transparentes.
-2. **Máquina de Estados Concurrente**: Ciclo de vida robusto protegido contra condiciones de carrera:  
-   `Publicada` ➔ `OfertaAceptada` ➔ `EnCurso` ➔ `Completada` / `Cancelada`.
-3. **Tracking GPS en Vivo**: El solicitante puede ver la ruta y el movimiento en tiempo real del vehículo mientras el flete está en tránsito.
-4. **Chat Integrado**: Mensajería directa en tiempo real entre publicador y transportista dentro del contexto de la oferta.
-5. **Verificación de Identidad**: Módulo de validación de identidad con carga segura de documentación y panel de moderación administrativo.
-6. **Sistema de Calificaciones**: Puntuación mutua (1 a 5 estrellas) con comentarios verificados post-entrega.
+- **Framework:** Flutter multiplataforma (Android, iOS, Web, Windows).
+- **Estado:** Riverpod sin generación de código.
+- **Navegación y red:** `go_router` con guardas de autenticación y `Dio` con
+  interceptor de refresh single-flight.
+- **Mapas:** `flutter_map` + OpenStreetMap.
+- **Seguridad local:** `flutter_secure_storage`.
+- **Monitoreo:** Sentry opcional (`--dart-define=SENTRY_DSN=...`).
 
 ---
 
-## 🚀 Puesta en Marcha Local
+## Características
+
+1. **Subasta a ciegas:** los fleteros ofertan sin ver las ofertas de la
+   competencia.
+2. **Máquina de estados concurrente:**
+   `Publicada → OfertaAceptada → EnCurso → Completada / Cancelada`.
+3. **Tracking GPS en vivo:** sólo durante un viaje activo y con opt-in explícito.
+4. **Chat integrado:** mensajería en tiempo real dentro del contexto de cada
+   oferta.
+5. **Verificación de identidad:** carga privada de documentos y panel de
+   moderación.
+6. **Reputación:** calificaciones mutuas post-entrega.
+7. **Eliminación de cuenta:** requisito de Google Play y de la Ley 25.326.
+
+---
+
+## Puesta en marcha local
 
 ### Prerrequisitos
-* [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-* [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.22)
-* [Docker & Docker Compose](https://www.docker.com/)
 
-### Opción A: todo con Docker (recomendada para probar la API)
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.22)
+- [Docker & Docker Compose](https://www.docker.com/)
+
+### Opción A: todo con Docker
 
 ```bash
 cd FLETAR_BACKEND
@@ -88,8 +122,8 @@ docker compose up --build
 ```
 
 La API queda en `http://localhost:8080` (Swagger en `/swagger`) y aplica las
-migraciones de EF Core al arrancar (`FLETAR_MIGRATE_ON_START=true`). PostgreSQL
-16 + PostGIS queda expuesto en el puerto `5433`.
+migraciones al arrancar (`FLETAR_MIGRATE_ON_START=true`). PostgreSQL 16 +
+PostGIS queda expuesto en el puerto `5433`.
 
 ```bash
 cd ../FLETAR_APP
@@ -112,8 +146,8 @@ cd src/Fletar.API
 dotnet run
 ```
 
-La API queda en `http://localhost:5080` (Swagger en `/swagger`) y la app Flutter
-usa esa URL por defecto:
+La API queda en `http://localhost:5080` (Swagger en `/swagger`) y la app usa esa
+URL por defecto:
 
 ```bash
 cd ../../../FLETAR_APP
@@ -128,30 +162,46 @@ flutter run -d chrome  # o dispositivo físico/emulador Android
 dotnet test FLETAR_BACKEND/Fletar.sln
 
 # App
-cd FLETAR_APP && flutter test
+cd FLETAR_APP && flutter test && flutter analyze
 ```
 
-El workflow `.github/workflows/ci.yml` corre backend, tests de Flutter y un
-smoke test de Docker Compose en cada push/PR.
+El workflow `.github/workflows/ci.yml` corre backend, tests de Flutter y un smoke
+test de Docker Compose en cada push/PR.
 
-### Deploy
+---
+
+## Deploy
 
 La guía para publicar la API con Neon (PostgreSQL + PostGIS) y Railway
-(Docker + SignalR) está en
-[`FLETAR_BACKEND/DEPLOY.md`](FLETAR_BACKEND/DEPLOY.md).
+(Docker + SignalR) está en [`FLETAR_BACKEND/DEPLOY.md`](FLETAR_BACKEND/DEPLOY.md).
 
----
+Build de producción de la app:
 
-## 🔒 Endurecimiento y Seguridad
+```bash
+cd FLETAR_APP
+flutter build appbundle --release \
+  --dart-define=FLETAR_API_URL=https://fletar-production.up.railway.app/api \
+  --dart-define=SENTRY_DSN=https://<public-key>@o<org>.ingest.sentry.io/<project-id>
+```
 
-El sistema pasó por una auditoría integral de código y arquitectura, resolviendo:
-* Expiración temporal y revocación de autorización de GPS vinculada al estado de la publicación.
-* Invalidación forzada de tokens y corte de sesión al desactivar cuentas de usuario.
-* Rate limiting y protección contra scraping en endpoints geoespaciales.
-* Sanitización y almacenamiento privado de documentos de identidad.
+## Backups y monitoreo
 
----
+- **Base:** dump diario con `.github/workflows/backup.yml` (requiere el secret
+  `DATABASE_URL`) y restore window de Neon.
+- **Uploads:** [`FLETAR_BACKEND/scripts/backup-uploads.ps1`](FLETAR_BACKEND/scripts/backup-uploads.ps1)
+  descarga el volumen de Railway. **El volumen no es un backup.**
+- **Detalle operativo:** [`FLETAR_BACKEND/docs/BACKUPS.md`](FLETAR_BACKEND/docs/BACKUPS.md).
+- **Errores:** Sentry en API y app; sin DSN queda desactivado.
 
-## 📄 Licencia
+## Legal
+
+- [Política de Privacidad](https://lucabaello1998.github.io/FletAR/privacidad.html)
+- [Términos y Condiciones](https://lucabaello1998.github.io/FletAR/terminos.html)
+- [Eliminación de cuenta y datos](https://lucabaello1998.github.io/FletAR/eliminar-cuenta.html)
+
+Los textos son una base operativa para el MVP; conviene que un abogado los revise
+antes de la publicación comercial.
+
+## Licencia
 
 Código propietario. Todos los derechos reservados. Ver [LICENSE](LICENSE).

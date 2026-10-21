@@ -56,6 +56,8 @@ dependencies:
   # vez de depender sólo de lo transitivo vía `dio` - mejor dejarlo explícito
   # ya que el código lo referencia por nombre.
   http_parser: ^4.1.2
+  sentry_flutter: 9.0.0
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:

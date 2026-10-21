@@ -41,6 +41,8 @@ que la API aplique las migraciones.
 | `FLETAR_CORS_ORIGENES` | Opcional: orígenes del cliente web separados por coma |
 | `FLETAR_GOOGLE_CLIENT_ID` | Opcional: login con Google |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Opcional: ruta al service account de Firebase dentro del contenedor |
+| `SENTRY_DSN` | Opcional: monitoreo de errores de la API |
+| `SENTRY_ENVIRONMENT` | Opcional: `production` (por defecto toma el entorno de ASP.NET) |
 
 `FLETAR_CS` no hace falta si se usa `DATABASE_URL`; si están las dos, gana
 `FLETAR_CS`.
@@ -62,14 +64,23 @@ Si se prefiere correrlas como paso separado, apagar esa variable y ejecutar
 ```bash
 cd FLETAR_APP
 flutter build appbundle \
-  --dart-define=FLETAR_API_URL=https://<dominio>/api
+  --dart-define=FLETAR_API_URL=https://fletar-production.up.railway.app/api \
+  --dart-define=SENTRY_DSN=https://<public-key>@o<org>.ingest.sentry.io/<project-id>
 ```
 
 Para un emulador Android local, la API en la PC se ve como
 `http://10.0.2.2:5080/api`; para un dispositivo físico, usar la IP de la PC en la
 red local.
 
-## 4. Checklist antes de publicar
+## 4. Producción actual
+
+- API: <https://fletar-production.up.railway.app>
+- Healthcheck: <https://fletar-production.up.railway.app/api/health>
+- Base: Neon PostgreSQL + PostGIS.
+- Uploads: volumen `fletar-volume` en `/data/uploads`.
+- App Android: AAB/APK release firmados y compilados contra esa URL.
+
+## 5. Checklist antes de publicar
 
 - [ ] `/api/health` responde desde internet.
 - [ ] `CREATE EXTENSION postgis` ejecutado en Neon.
@@ -79,6 +90,18 @@ red local.
 - [ ] Variables de Firebase/Google cargadas si se quieren notificaciones/login.
 - [ ] Probar registro, login, publicar, ofertar, aceptar, chat y GPS con la URL pública.
 - [ ] Configurar backups de Neon y alertas de uso en Railway.
+
+## 6. Legal, backups y eliminación de cuenta
+
+- Política de Privacidad: <https://lucabaello1998.github.io/FletAR/privacidad.html>
+- Términos y Condiciones: <https://lucabaello1998.github.io/FletAR/terminos.html>
+- Eliminación de cuenta: <https://lucabaello1998.github.io/FletAR/eliminar-cuenta.html>
+- La app permite eliminar la cuenta en **Mi perfil → Eliminar mi cuenta**.
+- Backups: [`docs/BACKUPS.md`](docs/BACKUPS.md), workflow
+  `.github/workflows/backup.yml` y `scripts/backup-neon.ps1` /
+  `scripts/backup-uploads.ps1`.
+- El volumen de Railway **no es un backup**: hay que descargarlo y guardarlo
+  cifrado fuera de Railway.
 
 ## Pendientes conocidos
 

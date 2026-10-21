@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/errores.dart';
 import '../../../core/theme/fletar_colors.dart';
@@ -19,6 +20,12 @@ import 'reputacion_indicador.dart';
 /// que el proyecto ya encontró y cerró varias veces (ver CLAUDE.md, la
 /// moraleja de "Mis ofertas" en la Fase 3). Se llega acá desde el ícono de
 /// perfil en el AppBar de `PublicacionesListScreen`.
+const _urlPrivacidad =
+    'https://lucabaello1998.github.io/FletAR/privacidad.html';
+const _urlTerminos = 'https://lucabaello1998.github.io/FletAR/terminos.html';
+const _urlEliminarCuenta =
+    'https://lucabaello1998.github.io/FletAR/eliminar-cuenta.html';
+
 class MiPerfilScreen extends ConsumerStatefulWidget {
   const MiPerfilScreen({super.key});
 
@@ -28,6 +35,7 @@ class MiPerfilScreen extends ConsumerStatefulWidget {
 
 class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
   bool _subiendo = false;
+  bool _eliminando = false;
 
   Future<void> _cambiarFotoVehiculo() async {
     final origen = await _elegirOrigen(context);
@@ -87,6 +95,85 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _abrirUrl(String url) async {
+    final abierta = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!abierta && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir el enlace.')),
+      );
+    }
+  }
+
+  Future<void> _confirmarEliminarCuenta() async {
+    final controller = TextEditingController();
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar mi cuenta'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Se van a borrar tus datos personales, fotos, documentos de '
+              'identidad y sesiones. Las publicaciones y operaciones cerradas '
+              'quedan anonimizadas para no romper el historial de otras personas.',
+            ),
+            const SizedBox(height: 16),
+            const Text('Escribí ELIMINAR para confirmar:'),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'ELIMINAR',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () => Navigator.pop(
+              context,
+              controller.text.trim() == 'ELIMINAR',
+            ),
+            child: const Text('Eliminar cuenta'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (confirmado != true) return;
+
+    setState(() => _eliminando = true);
+    try {
+      await ref.read(usuariosApiProvider).eliminarCuenta();
+      await ref.read(authControllerProvider.notifier).logout();
+      if (mounted) context.go('/login');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(mensajeDeError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _eliminando = false);
+    }
   }
 
   String _textoVerificacion(VerificacionIdentidad? verificacion) {
@@ -175,6 +262,49 @@ class _MiPerfilScreenState extends ConsumerState<MiPerfilScreen> {
                             usuario.fotoUrl == null
                                 ? 'Agregar foto'
                                 : 'Cambiar foto',
+                          ),
+                        ),
+                        const Divider(height: 40),
+                        Card(
+                          margin: EdgeInsets.zero,
+                          child: Column(
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.privacy_tip_outlined),
+                                title: const Text('Política de privacidad'),
+                                trailing: const Icon(Icons.open_in_new),
+                                onTap: () => _abrirUrl(_urlPrivacidad),
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.description_outlined),
+                                title: const Text('Términos y condiciones'),
+                                trailing: const Icon(Icons.open_in_new),
+                                onTap: () => _abrirUrl(_urlTerminos),
+                              ),
+                              const Divider(height: 1),
+                              ListTile(
+                                leading: const Icon(Icons.manage_accounts_outlined),
+                                title: const Text('Cómo eliminar mi cuenta'),
+                                trailing: const Icon(Icons.open_in_new),
+                                onTap: () => _abrirUrl(_urlEliminarCuenta),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextButton.icon(
+                          onPressed: _eliminando ? null : _confirmarEliminarCuenta,
+                          icon: _eliminando
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.delete_forever_outlined),
+                          label: const Text('Eliminar mi cuenta'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Theme.of(context).colorScheme.error,
                           ),
                         ),
                       ],

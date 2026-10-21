@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de Privacidad — FletAR</title>
+  <style>
+    :root { color-scheme: light dark; --fg:#17212b; --muted:#5c6b7a; --bg:#f7f9fc; --card:#ffffff; --accent:#0b6bcb; }
+    @media (prefers-color-scheme: dark) { :root { --fg:#e8eef5; --muted:#a8b6c5; --bg:#10161d; --card:#18212b; --accent:#6bb6ff; } }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height:1.65; color:var(--fg); background:var(--bg); }
+    main { max-width: 820px; margin: 0 auto; padding: 48px 24px 72px; }
+    h1 { font-size: 2rem; line-height:1.2; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin-top: 32px; }
+    h3 { font-size: 1rem; margin-top: 22px; }
+    .muted { color: var(--muted); }
+    .card { background: var(--card); border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); border-radius: 16px; padding: 24px; margin: 20px 0; }
+    a { color: var(--accent); }
+    ul, ol { padding-left: 1.3rem; }
+    table { width:100%; border-collapse: collapse; margin: 12px 0; }
+    th, td { text-align:left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); }
+    th { font-weight: 600; }
+  </style>
+</head>
+<body>
+<main>
+  <p class="muted"><a href="index.html">FletAR</a> / Política de Privacidad</p>
+  <h1>Política de Privacidad</h1>
+  <p class="muted">Última actualización: 21 de octubre de 2026.</p>
+
+  <div class="card">
+    <p><strong>Responsable del tratamiento:</strong> Luca Nicolás Baello, con domicilio en Buenos Aires, Argentina.</p>
+    <p><strong>Contacto de privacidad:</strong> <a href="mailto:luca.baello@gmail.com">luca.baello@gmail.com</a>.</p>
+    <p>Esta política aplica a la aplicación móvil FletAR, a su cliente web y a la API de FletAR (en conjunto, el “Servicio”).</p>
+  </div>
+
+  <h2>1. Qué datos tratamos</h2>
+  <table>
+    <tr><th>Categoría</th><th>Datos</th><th>Origen</th></tr>
+    <tr>
+      <td>Cuenta</td>
+      <td>Nombre, email, teléfono, contraseña (guardada como hash), foto de perfil o del vehículo, rol y estado de la cuenta.</td>
+      <td>Los ingresás al registrarte o al editar tu perfil; si usás Google, recibimos tu nombre, email y foto desde Google.</td>
+    </tr>
+    <tr>
+      <td>Publicaciones</td>
+      <td>Título, descripción, categoría, tipo de vehículo sugerido, dirección y coordenadas de origen y destino, fecha deseada y fotos de la carga.</td>
+      <td>Los ingresás al publicar un flete.</td>
+    </tr>
+    <tr>
+      <td>Ofertas, chat y calificaciones</td>
+      <td>Monto ofertado, mensaje de la oferta, mensajes del chat, puntajes y comentarios de reputación, reportes de moderación.</td>
+      <td>Los ingresás al ofertar, conversar, calificar o reportar.</td>
+    </tr>
+    <tr>
+      <td>Verificación de identidad</td>
+      <td>Frente y dorso de tu documento, estado de la verificación y comentario del administrador.</td>
+      <td>Los subís voluntariamente para obtener la insignia de identidad verificada. Son datos sensibles y se guardan en almacenamiento privado.</td>
+    </tr>
+    <tr>
+      <td>Ubicación</td>
+      <td>Última latitud, longitud y fecha de actualización, sólo mientras compartís tu ubicación durante un viaje activo.</td>
+      <td>Tu dispositivo, con tu permiso y mientras el seguimiento está activado. FletAR no hace seguimiento en segundo plano.</td>
+    </tr>
+    <tr>
+      <td>Notificaciones y técnica</td>
+      <td>Token de Firebase Cloud Messaging (FCM), identificadores de dispositivo, dirección IP, agente de usuario, registros de errores y de seguridad.</td>
+      <td>Se generan al usar el Servicio.</td>
+    </tr>
+  </table>
+
+  <h2>2. Para qué los usamos</h2>
+  <ul>
+    <li>Crear y administrar tu cuenta, autenticarte y mantener tu sesión.</li>
+    <li>Publicar fletes, recibir y gestionar ofertas, habilitar el chat y el seguimiento del viaje.</li>
+    <li>Mostrar reputación, verificar identidad y moderar contenido o conductas abusivas.</li>
+    <li>Enviar notificaciones relacionadas con tu actividad (ofertas, mensajes, cambios de estado).</li>
+    <li>Prevenir fraude, abuso, spam y accesos no autorizados; aplicar límites de uso.</li>
+    <li>Diagnosticar errores, medir disponibilidad y mejorar el Servicio.</li>
+    <li>Cumplir obligaciones legales y atender requerimientos de autoridades competentes.</li>
+  </ul>
+
+  <h2>3. Base legal</h2>
+  <p>Tratamos los datos porque son necesarios para ejecutar el contrato que aceptás al usar FletAR, porque nos diste tu consentimiento (por ejemplo, ubicación, verificación de identidad y notificaciones), porque tenemos un interés legítimo en mantener el Servicio seguro y prevenir fraude, o porque una norma nos obliga. Podés retirar tu consentimiento en cualquier momento, sin afectar los tratamientos anteriores.</p>
+
+  <h2>4. Con quién los compartimos</h2>
+  <p>No vendemos datos personales. Los compartimos sólo con proveedores que nos ayudan a operar el Servicio y con las personas con quienes interactuás:</p>
+  <ul>
+    <li><strong>Neon</strong> (base de datos PostgreSQL/PostGIS) y <strong>Railway</strong> (alojamiento de la API y archivos subidos).</li>
+    <li><strong>Google Firebase Cloud Messaging</strong> para notificaciones push y <strong>Google Sign-In</strong> si elegís iniciar sesión con Google.</li>
+    <li><strong>Sentry</strong> para monitoreo de errores, configurado sin datos personales por defecto.</li>
+    <li><strong>OpenStreetMap</strong> para las teselas del mapa; tu dispositivo solicita las imágenes directamente a ese servicio.</li>
+    <li>Otros usuarios: tu nombre, foto de vehículo, reputación, publicaciones y mensajes que decidas compartir en el marketplace. Los documentos de identidad nunca son públicos.</li>
+    <li>Autoridades, cuando exista una obligación legal o una orden válida.</li>
+  </ul>
+  <p>Algunos proveedores pueden procesar datos fuera de Argentina. En esos casos se aplican las medidas contractuales y de seguridad disponibles para proteger la información.</p>
+
+  <h2>5. Cuánto tiempo los conservamos</h2>
+  <p>Conservamos los datos mientras tu cuenta esté activa y durante el tiempo necesario para las finalidades descritas. Si eliminás tu cuenta:</p>
+  <ul>
+    <li>Borramos tus datos de contacto, contraseña, foto de vehículo, documentos de identidad, ubicación y token de notificaciones.</li>
+    <li>Cancelamos tus publicaciones abiertas y eliminamos sus fotos.</li>
+    <li>Anonimizamos las publicaciones y operaciones cerradas que necesitamos conservar para no romper el historial de otras personas, para reputación o para prevención de fraude.</li>
+    <li>Los respaldos se rotan en un plazo limitado; puede pasar un tiempo hasta que una copia de seguridad expire.</li>
+  </ul>
+  <p>Los registros técnicos y de seguridad se conservan por períodos acotados. Podemos conservar información anonimizada o agregada sin límite, porque ya no identifica a una persona.</p>
+
+  <h2>6. Tus derechos</h2>
+  <p>Como titular de datos personales podés solicitar acceso, rectificación, actualización, supresión y confidencialidad, y oponerte a determinados tratamientos. Escribinos a <a href="mailto:luca.baello@gmail.com">luca.baello@gmail.com</a> indicando tu nombre y el email de la cuenta. También podés eliminar tu cuenta desde la app, en <strong>Mi perfil → Eliminar mi cuenta</strong>, o seguir las instrucciones de <a href="eliminar-cuenta.html">esta página</a>.</p>
+  <p>Si no obtenés una respuesta satisfactoria, podés presentar una denuncia ante la Agencia de Acceso a la Información Pública (AAIP) de Argentina.</p>
+
+  <h2>7. Seguridad</h2>
+  <p>Usamos HTTPS, contraseñas con hash, tokens de refresco con hash y rotación, almacenamiento privado para documentos de identidad, controles de acceso por rol, límites de uso y registros de errores. Ningún sistema es 100% seguro: si detectás un incidente, escribinos de inmediato.</p>
+
+  <h2>8. Menores de edad</h2>
+  <p>FletAR es para personas mayores de 18 años. No recolectamos deliberadamente datos de menores. Si detectamos una cuenta de un menor, la suspendemos y eliminamos sus datos.</p>
+
+  <h2>9. Cambios</h2>
+  <p>Podemos actualizar esta política para reflejar cambios en el Servicio o en la ley. Publicaremos la versión vigente con su fecha y, si el cambio es relevante, te avisaremos dentro de la app o por email.</p>
+
+  <h2>10. Contacto</h2>
+  <p>Luca Nicolás Baello — Buenos Aires, Argentina.<br>
+  Email: <a href="mailto:luca.baello@gmail.com">luca.baello@gmail.com</a>.</p>
+</main>
+</body>
+</html>

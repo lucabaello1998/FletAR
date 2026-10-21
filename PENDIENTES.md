@@ -12,9 +12,13 @@ Lo que sigue, en orden de dependencia.
       `https://fletar-production.up.railway.app` (healthcheck `/api/health`).
       Variables: `DATABASE_URL`, `FLETAR_JWT_KEY`, `FLETAR_JWT_ISSUER`,
       `FLETAR_JWT_AUDIENCE`, `FLETAR_MIGRATE_ON_START`, `FLETAR_UPLOADS_PATH`.
+      Sentry es opcional (`SENTRY_DSN`).
 - [x] **Migraciones**: se aplican al arrancar (`FLETAR_MIGRATE_ON_START=true`).
 - [x] **Uploads persistentes**: volumen `fletar-volume` montado en `/data/uploads`.
-- [ ] **Backups** automáticos de la base y del volumen de uploads.
+- [x] **Backups**: workflow diario `backup.yml`, `scripts/backup-neon.ps1` y
+      `scripts/backup-uploads.ps1`; detalle en `FLETAR_BACKEND/docs/BACKUPS.md`.
+- [ ] Cargar el secret `DATABASE_URL` en GitHub, habilitar la restore window de
+      Neon y probar un restore real en una branch temporal.
 - [ ] **Firebase**: proyecto de producción, `google-services.json` en la app y cuenta de
       servicio en la API (push real).
 - [ ] **Google OAuth**: cliente de producción con el SHA-1 del keystore de release.
@@ -29,12 +33,15 @@ Lo que sigue, en orden de dependencia.
 - [x] Versión `1.0.0+1` en `pubspec.yaml`.
 - [x] Compilar con la URL real:
       `flutter build appbundle --release --dart-define=FLETAR_API_URL=https://fletar-production.up.railway.app/api`
-      Generados `app-release.aab` (45.1 MB) y `app-release.apk` (56.7 MB).
-- [ ] Ficha de la app: nombre, descripción, ícono, capturas, política de privacidad (URL).
+      Generados `app-release.aab` (46.5 MB) y `app-release.apk` (59.0 MB),
+      firmados con la key de FletAR.
+- [x] Política de privacidad, términos y página de eliminación publicadas:
+      `https://lucabaello1998.github.io/FletAR/`.
+- [ ] Ficha de la app: nombre, descripción, ícono, capturas y feature graphic.
 - [ ] *Data safety*: declarar ubicación, fotos, identidad y datos de cuenta.
 - [ ] *Content rating* y clasificación para Argentina.
-- [ ] **Eliminación de cuenta dentro de la app** (requisito de Play; hoy sólo la
-      desactiva un admin) y URL pública de solicitud de borrado.
+- [x] **Eliminación de cuenta dentro de la app** (`DELETE /api/usuarios/me` y
+      **Mi perfil → Eliminar mi cuenta**) y URL pública de solicitud.
 - [ ] Testing interno → cerrado → producción.
 
 ## 3. Producto / seguridad pendientes
@@ -44,9 +51,12 @@ Lo que sigue, en orden de dependencia.
       a los 5 min, pero la pantalla puede seguir mostrando el último pin).
 - [ ] Aviso explícito al fletero cuando el dueño deja de seguirlo / el viaje termina.
 - [ ] Revisar los límites anti-abuso con uso real (120/min global, 10/min en auth).
-- [ ] Política de privacidad y términos y condiciones (Ley 25.326 de datos personales).
+- [x] Política de privacidad y términos y condiciones (Ley 25.326 de datos personales).
 - [ ] Procedimiento de moderación de documentos de identidad (quién, cuándo, cuánto se guardan).
-- [ ] Monitoreo: uptime, logs, errores (Sentry o similar) y alertas.
+- [x] Monitoreo de errores con Sentry en API y app (código integrado, sin DSN
+      queda apagado).
+- [ ] Crear proyectos de Sentry, cargar `SENTRY_DSN` en Railway y compilar la app
+      con `--dart-define=SENTRY_DSN=...`; configurar alertas de uptime.
 
 ## 4. Calidad
 

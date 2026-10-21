@@ -5,6 +5,9 @@ FLETAR_BACKEND/.env
 FLETAR_BACKEND/**/firebase-service-account.json
 *.user
 
+# Backups locales (dumps de Neon y copias de uploads) - nunca al repo.
+backups/
+
 # Fotos subidas por usuarios (Fase 8) - contenido generado en runtime, no
 # código fuente. Program.cs crea las subcarpetas (publicaciones/, vehiculos/)
 # solo si no existen, así que no hace falta un .gitkeep.
