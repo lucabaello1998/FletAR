@@ -1,21 +1,20 @@
 # FletAR — lo que falta para estar en producción
 
-Estado al 20/10/2026: MVP completo (fases 1-9), release Android firmado y endurecido.
+Estado al 21/10/2026: MVP completo (fases 1-9), release Android firmado y endurecido,
+backend desplegado en Railway con Neon/PostGIS y healthcheck público.
 Lo que sigue, en orden de dependencia.
 
-## 1. Backend desplegado (bloquea todo lo demás)
+## 1. Backend desplegado
 
-- [ ] **Base de datos**: Postgres 16 + PostGIS en un proveedor gestionado (Neon, Supabase,
-      Railway, Render) o un VPS. Guardar la cadena en `FLETAR_CS`.
-- [ ] **API**: publicar `FLETAR_BACKEND` (Dockerfile ya existe) con HTTPS y dominio propio.
-      Variables de producción: `FLETAR_CS`, `FLETAR_JWT_KEY` (nueva, no la de dev),
-      `FLETAR_JWT_ISSUER`, `FLETAR_JWT_AUDIENCE`, `FLETAR_GOOGLE_CLIENT_ID`,
-      `GOOGLE_APPLICATION_CREDENTIALS`, `CORS` con el dominio real.
-- [ ] **Migraciones**: correr `dotnet ef database update` contra la base nueva (o dejarlas
-      en el arranque, decidido explícitamente).
-- [ ] **Uploads persistentes**: volumen para `uploads/publico` y `uploads/privado`
-      (los documentos de identidad NO pueden quedar en el disco efímero del contenedor).
-- [ ] **Backups** automáticos de la base y de `uploads/privado`.
+- [x] **Base de datos**: PostgreSQL + PostGIS en Neon. La API usa `DATABASE_URL`
+      (sin pooling) y la extensión `postgis` está creada.
+- [x] **API**: publicada en Railway con HTTPS:
+      `https://fletar-production.up.railway.app` (healthcheck `/api/health`).
+      Variables: `DATABASE_URL`, `FLETAR_JWT_KEY`, `FLETAR_JWT_ISSUER`,
+      `FLETAR_JWT_AUDIENCE`, `FLETAR_MIGRATE_ON_START`, `FLETAR_UPLOADS_PATH`.
+- [x] **Migraciones**: se aplican al arrancar (`FLETAR_MIGRATE_ON_START=true`).
+- [x] **Uploads persistentes**: volumen `fletar-volume` montado en `/data/uploads`.
+- [ ] **Backups** automáticos de la base y del volumen de uploads.
 - [ ] **Firebase**: proyecto de producción, `google-services.json` en la app y cuenta de
       servicio en la API (push real).
 - [ ] **Google OAuth**: cliente de producción con el SHA-1 del keystore de release.
@@ -27,9 +26,10 @@ Lo que sigue, en orden de dependencia.
 - [ ] Cuenta de desarrollador de Play Console (pago único de USD 25).
 - [ ] **Backup del keystore** (`FletAR\.secrets\`) en dos lugares fuera de la PC.
       Sin eso no hay actualizaciones (o hay que usar Play App Signing).
-- [ ] Subir `version` en `pubspec.yaml` (empezar en `1.0.0+1`).
-- [ ] Compilar con la URL real:
-      `flutter build appbundle --release --dart-define=FLETAR_API_URL=https://TU-DOMINIO/api`
+- [x] Versión `1.0.0+1` en `pubspec.yaml`.
+- [x] Compilar con la URL real:
+      `flutter build appbundle --release --dart-define=FLETAR_API_URL=https://fletar-production.up.railway.app/api`
+      Generados `app-release.aab` (45.1 MB) y `app-release.apk` (56.7 MB).
 - [ ] Ficha de la app: nombre, descripción, ícono, capturas, política de privacidad (URL).
 - [ ] *Data safety*: declarar ubicación, fotos, identidad y datos de cuenta.
 - [ ] *Content rating* y clasificación para Argentina.
