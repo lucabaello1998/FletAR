@@ -34,6 +34,7 @@ public class FletarDbContext : DbContext
         {
             b.HasOne<Usuario>().WithMany().HasForeignKey(rt => rt.UsuarioId).OnDelete(DeleteBehavior.Cascade);
             b.HasIndex(rt => rt.FamiliaId);
+            b.HasIndex(rt => rt.TokenHash).IsUnique();
         });
 
         modelBuilder.Entity<CategoriaCarga>().HasData(

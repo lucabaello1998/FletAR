@@ -308,6 +308,9 @@ namespace Fletar.DAL.Migrations
 
                     b.HasIndex("FamiliaId");
 
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
                     b.HasIndex("UsuarioId");
 
                     b.ToTable("RefreshTokens");

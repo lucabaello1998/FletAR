@@ -89,6 +89,7 @@ Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPrivados, "doc
 
 builder.Services.AddBusinessLayer(connectionString, jwtSettings, googleSettings, firebaseSettings, almacenamientoSettings);
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<SeguimientoUbicacionRegistry>();
 
 // Orígenes del cliente web separados por coma (p. ej. https://app.fletar.ar).
 // Vacío por defecto: en producción hay que setear FLETAR_CORS_ORIGENES a mano,
@@ -215,6 +216,20 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// En Docker no hay `dotnet ef` en la imagen final: la API aplica las migraciones
+// al arrancar cuando el entorno lo pide explícitamente. En local se sigue usando
+// `dotnet ef database update`; en producción se puede dejar apagado y correrlo
+// como paso de deploy.
+if (string.Equals(
+        Environment.GetEnvironmentVariable("FLETAR_MIGRATE_ON_START"),
+        "true",
+        StringComparison.OrdinalIgnoreCase))
+{
+    using var scopeMigraciones = app.Services.CreateScope();
+    var dbMigraciones = scopeMigraciones.ServiceProvider.GetRequiredService<FletarDbContext>();
+    await dbMigraciones.Database.MigrateAsync();
+}
+
 app.UseCabecerasDeSeguridad();
 app.UseExceptionHandler();
 
@@ -283,7 +298,13 @@ static void LoadEnvFile()
 
                 var clave = linea[..separador].Trim();
                 var valor = linea[(separador + 1)..].Trim();
-                Environment.SetEnvironmentVariable(clave, valor);
+
+                // El entorno real gana sobre .env: Docker Compose define
+                // FLETAR_CS apuntando al servicio db, y el .env local apunta a
+                // localhost:5433. Sin este chequeo, el archivo pisaba el valor
+                // del contenedor y la API intentaba conectarse a localhost.
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(clave)))
+                    Environment.SetEnvironmentVariable(clave, valor);
             }
             return;
         }

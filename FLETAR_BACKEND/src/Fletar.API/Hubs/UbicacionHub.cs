@@ -15,7 +15,7 @@ namespace Fletar.API.Hubs;
 /// tiempo real. Requiere JWT válido - [Authorize] acá exige lo mismo que el
 /// FallbackPolicy del resto de la API (cualquier usuario autenticado).
 [Authorize]
-public class UbicacionHub(FletarDbContext db) : Hub
+public class UbicacionHub(FletarDbContext db, SeguimientoUbicacionRegistry seguidores) : Hub
 {
     /// Una posición guardada más vieja que esto no se devuelve: el fletero que
     /// cerró la app hace veinte minutos no sigue "en vivo" en el mapa.
@@ -29,6 +29,11 @@ public class UbicacionHub(FletarDbContext db) : Hub
     /// siguiendo en ese momento.
     public async Task ActualizarUbicacion(double lat, double lng)
     {
+        if (lat is < -90 or > 90)
+            throw new HubException("La latitud debe estar entre -90 y 90.");
+        if (lng is < -180 or > 180)
+            throw new HubException("La longitud debe estar entre -180 y 180.");
+
         var usuarioId = UsuarioIdActual();
 
         var usuario = await db.Usuarios.FindAsync(usuarioId)
@@ -40,8 +45,38 @@ public class UbicacionHub(FletarDbContext db) : Hub
         usuario.UltimaUbicacionFecha = fecha;
         await db.SaveChangesAsync();
 
-        await Clients.Group(GrupoDeFletero(usuarioId))
-            .SendAsync("RecibirUbicacion", usuarioId, lat, lng, fecha);
+        // No alcanza con mandar al grupo: hay conexiones que quedaron ahí cuando
+        // la publicación se completó/canceló. Se revalida cada vínculo y se
+        // envía sólo a las conexiones que todavía tienen permiso.
+        var conexiones = seguidores.PorFletero(usuarioId);
+        if (conexiones.Count == 0)
+            return;
+
+        var watcherIds = conexiones.Select(s => s.WatcherId).Distinct().ToList();
+        var vinculos = await (
+            from p in db.Publicaciones
+            join o in db.Ofertas on p.Id equals o.PublicacionId
+            where watcherIds.Contains(p.UsuarioId) && o.UsuarioId == usuarioId
+            select new { p.UsuarioId, Publicacion = p.Estado, Oferta = o.Estado }).ToListAsync();
+
+        var autorizados = vinculos
+            .Where(v => SeguimientoPermitido(v.Publicacion, v.Oferta))
+            .Select(v => v.UsuarioId)
+            .ToHashSet();
+
+        foreach (var conexion in conexiones)
+        {
+            if (!autorizados.Contains(conexion.WatcherId))
+            {
+                seguidores.Quitar(conexion.ConnectionId, usuarioId);
+                await Groups.RemoveFromGroupAsync(conexion.ConnectionId, GrupoDeFletero(usuarioId));
+                await Clients.Client(conexion.ConnectionId).SendAsync("SeguimientoRevocado", usuarioId);
+                continue;
+            }
+
+            await Clients.Client(conexion.ConnectionId)
+                .SendAsync("RecibirUbicacion", usuarioId, lat, lng, fecha);
+        }
     }
 
     /// Lo llama quien quiere ver a un fletero en vivo (el dueño de una
@@ -66,6 +101,7 @@ public class UbicacionHub(FletarDbContext db) : Hub
         if (!vinculos.Any(v => SeguimientoPermitido(v.Publicacion, v.Oferta)))
             throw new HubException("No podés seguir la ubicación de este usuario.");
 
+        seguidores.Registrar(Context.ConnectionId, llamanteId, usuarioId);
         await Groups.AddToGroupAsync(Context.ConnectionId, GrupoDeFletero(usuarioId));
 
         var fletero = await db.Usuarios.FindAsync(usuarioId);
@@ -97,8 +133,17 @@ public class UbicacionHub(FletarDbContext db) : Hub
 
     /// Se llama al salir de la pantalla de tracking, para dejar de recibir
     /// actualizaciones de este fletero.
-    public Task DejarDeSeguirFletero(int usuarioId)
-        => Groups.RemoveFromGroupAsync(Context.ConnectionId, GrupoDeFletero(usuarioId));
+    public async Task DejarDeSeguirFletero(int usuarioId)
+    {
+        seguidores.Quitar(Context.ConnectionId, usuarioId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GrupoDeFletero(usuarioId));
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        seguidores.QuitarConexion(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
+    }
 
     private int UsuarioIdActual()
     {

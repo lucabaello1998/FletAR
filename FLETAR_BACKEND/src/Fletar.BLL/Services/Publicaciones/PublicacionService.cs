@@ -123,8 +123,23 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
 
         ValidarDuenioYEstadoEditable(publicacion, usuarioId);
 
-        publicacion.Estado = EstadoPublicacion.Cancelada;
-        await db.SaveChangesAsync();
+        if (db.Database.IsRelational())
+        {
+            var filas = await db.Publicaciones
+                .Where(p => p.Id == id
+                    && p.UsuarioId == usuarioId
+                    && p.Estado == EstadoPublicacion.Publicada)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.Estado, EstadoPublicacion.Cancelada));
+
+            if (filas == 0)
+                throw new InvalidOperationException("La publicación cambió de estado; volvé a intentar.");
+        }
+        else
+        {
+            publicacion.Estado = EstadoPublicacion.Cancelada;
+            await db.SaveChangesAsync();
+        }
     }
 
     // Moderación: el admin puede cancelar cualquier publicación abusiva/reportada,
@@ -138,8 +153,23 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
         if (publicacion.Estado is EstadoPublicacion.Completada or EstadoPublicacion.Cancelada)
             throw new InvalidOperationException("La publicación ya está en un estado final.");
 
-        publicacion.Estado = EstadoPublicacion.Cancelada;
-        await db.SaveChangesAsync();
+        if (db.Database.IsRelational())
+        {
+            var filas = await db.Publicaciones
+                .Where(p => p.Id == id
+                    && p.Estado != EstadoPublicacion.Completada
+                    && p.Estado != EstadoPublicacion.Cancelada)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.Estado, EstadoPublicacion.Cancelada));
+
+            if (filas == 0)
+                throw new InvalidOperationException("La publicación ya está en un estado final.");
+        }
+        else
+        {
+            publicacion.Estado = EstadoPublicacion.Cancelada;
+            await db.SaveChangesAsync();
+        }
     }
 
     public async Task<IReadOnlyList<CategoriaCargaResponse>> ListarCategoriasAsync()
@@ -314,7 +344,14 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
     }
 
     private static Point CrearPunto(double latitud, double longitud)
-        => new(longitud, latitud) { SRID = 4326 };
+    {
+        if (latitud is < -90 or > 90)
+            throw new InvalidOperationException("La latitud debe estar entre -90 y 90.");
+        if (longitud is < -180 or > 180)
+            throw new InvalidOperationException("La longitud debe estar entre -180 y 180.");
+
+        return new Point(longitud, latitud) { SRID = 4326 };
+    }
 
     private static Point? CrearPuntoOpcional(double? latitud, double? longitud)
     {

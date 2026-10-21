@@ -139,6 +139,7 @@ final seguimientoFleteroProvider = AsyncNotifierProvider.autoDispose
 
 class SeguimientoFleteroController extends AutoDisposeFamilyAsyncNotifier<UbicacionActual?, int> {
   StreamSubscription<UbicacionActual>? _sub;
+  StreamSubscription<int>? _revocadosSub;
 
   @override
   Future<UbicacionActual?> build(int arg) async {
@@ -146,11 +147,16 @@ class SeguimientoFleteroController extends AutoDisposeFamilyAsyncNotifier<Ubicac
 
     ref.onDispose(() {
       _sub?.cancel();
+      _revocadosSub?.cancel();
       unawaited(hub.dejarDeSeguirFletero(arg));
     });
 
     _sub = hub.ubicacionesRecibidas.where((u) => u.usuarioId == arg).listen((ubicacion) {
       state = AsyncData(ubicacion);
+    });
+
+    _revocadosSub = hub.seguimientosRevocados.where((id) => id == arg).listen((_) {
+      state = const AsyncData<UbicacionActual?>(null);
     });
 
     // Autorización real la hace el backend (UbicacionHub.SeguirFletero): si

@@ -11,6 +11,12 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
 {
     public async Task<OfertaResponse> CrearAsync(int usuarioId, int publicacionId, OfertaCreateRequest request)
     {
+        if (request.Monto <= 0)
+            throw new InvalidOperationException("El monto de la oferta debe ser mayor a cero.");
+
+        if (request.Mensaje?.Length > 500)
+            throw new InvalidOperationException("El mensaje de la oferta no puede superar los 500 caracteres.");
+
         var publicacion = await BuscarPublicacionOFallarAsync(publicacionId);
 
         if (publicacion.Estado != EstadoPublicacion.Publicada)
@@ -99,25 +105,64 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         // primera haga commit) - la otra ve 0 filas afectadas y falla, en vez de
         // que ambas pasen la validación de arriba y dejen dos Ofertas en estado
         // Aceptada con Publicacion.OfertaAceptadaId apuntando a una sola.
-        var filasActualizadas = await db.Publicaciones
-            .Where(p => p.Id == publicacionId && p.Estado == EstadoPublicacion.Publicada)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(p => p.Estado, EstadoPublicacion.OfertaAceptada)
-                .SetProperty(p => p.OfertaAceptadaId, oferta.Id));
+        //
+        // La transacción cubre también el rechazo de las demás ofertas y el
+        // cambio a Aceptada: si algo falla, no queda una publicación aceptada
+        // con ofertas pendientes o dos ofertas aceptadas.
+        await using var tx = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync()
+            : null;
 
-        if (filasActualizadas == 0)
-            throw new InvalidOperationException("Sólo se puede aceptar una oferta cuando la publicación está en estado Publicada.");
+        try
+        {
+            int filasActualizadas;
 
-        var otrasOfertasPendientes = await db.Ofertas
-            .Where(o => o.PublicacionId == publicacionId && o.Estado == EstadoOferta.Pendiente && o.Id != ofertaId)
-            .ToListAsync();
+            if (db.Database.IsRelational())
+            {
+                filasActualizadas = await db.Publicaciones
+                    .Where(p => p.Id == publicacionId && p.Estado == EstadoPublicacion.Publicada)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(p => p.Estado, EstadoPublicacion.OfertaAceptada)
+                        .SetProperty(p => p.OfertaAceptadaId, oferta.Id));
+            }
+            else
+            {
+                // Fallback para InMemory: sin ExecuteUpdate ni transacciones.
+                if (publicacion.Estado != EstadoPublicacion.Publicada)
+                {
+                    filasActualizadas = 0;
+                }
+                else
+                {
+                    publicacion.Estado = EstadoPublicacion.OfertaAceptada;
+                    publicacion.OfertaAceptadaId = oferta.Id;
+                    filasActualizadas = 1;
+                }
+            }
 
-        foreach (var otra in otrasOfertasPendientes)
-            otra.Estado = EstadoOferta.Rechazada;
+            if (filasActualizadas == 0)
+                throw new InvalidOperationException("Sólo se puede aceptar una oferta cuando la publicación está en estado Publicada.");
 
-        oferta.Estado = EstadoOferta.Aceptada;
+            var otrasOfertasPendientes = await db.Ofertas
+                .Where(o => o.PublicacionId == publicacionId && o.Estado == EstadoOferta.Pendiente && o.Id != ofertaId)
+                .ToListAsync();
 
-        await db.SaveChangesAsync();
+            foreach (var otra in otrasOfertasPendientes)
+                otra.Estado = EstadoOferta.Rechazada;
+
+            oferta.Estado = EstadoOferta.Aceptada;
+
+            await db.SaveChangesAsync();
+
+            if (tx is not null)
+                await tx.CommitAsync();
+        }
+        catch
+        {
+            if (tx is not null)
+                await tx.RollbackAsync();
+            throw;
+        }
 
         await fcmSender.NotificarAsync(
             oferta.UsuarioId,
@@ -137,8 +182,25 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         if (oferta.Estado != EstadoOferta.Pendiente)
             throw new InvalidOperationException("Sólo se puede retirar una oferta que esté Pendiente.");
 
-        oferta.Estado = EstadoOferta.Retirada;
-        await db.SaveChangesAsync();
+        if (db.Database.IsRelational())
+        {
+            var filas = await db.Ofertas
+                .Where(o => o.Id == ofertaId
+                    && o.UsuarioId == usuarioIdQueRetira
+                    && o.Estado == EstadoOferta.Pendiente)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.Estado, EstadoOferta.Retirada));
+
+            if (filas == 0)
+                throw new InvalidOperationException("La oferta cambió de estado; volvé a intentar.");
+
+            oferta = await db.Ofertas.AsNoTracking().SingleAsync(o => o.Id == ofertaId);
+        }
+        else
+        {
+            oferta.Estado = EstadoOferta.Retirada;
+            await db.SaveChangesAsync();
+        }
 
         return await MapearConNombreAsync(oferta);
     }
@@ -153,8 +215,23 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         if (publicacion.Estado != EstadoPublicacion.OfertaAceptada)
             throw new InvalidOperationException("Sólo se puede iniciar una publicación que tenga una oferta aceptada.");
 
-        publicacion.Estado = EstadoPublicacion.EnCurso;
-        await db.SaveChangesAsync();
+        if (db.Database.IsRelational())
+        {
+            var filas = await db.Publicaciones
+                .Where(p => p.Id == publicacionId
+                    && p.UsuarioId == usuarioIdDueno
+                    && p.Estado == EstadoPublicacion.OfertaAceptada)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.Estado, EstadoPublicacion.EnCurso));
+
+            if (filas == 0)
+                throw new InvalidOperationException("La publicación cambió de estado; volvé a intentar.");
+        }
+        else
+        {
+            publicacion.Estado = EstadoPublicacion.EnCurso;
+            await db.SaveChangesAsync();
+        }
     }
 
     public async Task CompletarAsync(int publicacionId, int usuarioIdDueno)
@@ -167,8 +244,23 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         if (publicacion.Estado != EstadoPublicacion.EnCurso)
             throw new InvalidOperationException("Sólo se puede completar una publicación que esté En Curso.");
 
-        publicacion.Estado = EstadoPublicacion.Completada;
-        await db.SaveChangesAsync();
+        if (db.Database.IsRelational())
+        {
+            var filas = await db.Publicaciones
+                .Where(p => p.Id == publicacionId
+                    && p.UsuarioId == usuarioIdDueno
+                    && p.Estado == EstadoPublicacion.EnCurso)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(p => p.Estado, EstadoPublicacion.Completada));
+
+            if (filas == 0)
+                throw new InvalidOperationException("La publicación cambió de estado; volvé a intentar.");
+        }
+        else
+        {
+            publicacion.Estado = EstadoPublicacion.Completada;
+            await db.SaveChangesAsync();
+        }
 
         var mensaje = $"\"{publicacion.Titulo}\" se completó. Ya podés calificar a la otra parte.";
         await fcmSender.NotificarAsync(publicacion.UsuarioId, "Flete completado", mensaje);

@@ -32,6 +32,19 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
+    // Un 401 "tardío": la request salió con el access token viejo, pero otra
+    // request ya refrescó mientras la respuesta estaba en vuelo. No hay que
+    // refrescar de nuevo (el backend revoca la familia al ver el refresh
+    // repetido): alcanza con reintentar con el token que ya está guardado.
+    final tokenDelRequest = err.requestOptions.headers['Authorization'] as String?;
+    final tokenActual = await _tokenStorage.leerAccessToken();
+    if (tokenActual != null &&
+        tokenDelRequest != null &&
+        tokenDelRequest != 'Bearer $tokenActual') {
+      await _reintentar(err, tokenActual, handler);
+      return;
+    }
+
     final refreshToken = await _tokenStorage.leerRefreshToken();
     if (refreshToken == null) {
       handler.next(err);
@@ -49,7 +62,19 @@ class AuthInterceptor extends Interceptor {
       // simultáneos no alcanzan a crear cada uno su propio Future: Dart corre
       // cada continuación hasta el próximo await sin interrupción.
       final accessToken = await (_refreshEnCurso ??= _refrescar(refreshToken));
+      await _reintentar(err, accessToken, handler);
+    } on DioException {
+      await _tokenStorage.limpiar();
+      handler.next(err);
+    }
+  }
 
+  Future<void> _reintentar(
+    DioException err,
+    String accessToken,
+    ErrorInterceptorHandler handler,
+  ) async {
+    try {
       // FormData sólo se puede serializar una vez (Dio la marca "finalizada"
       // la primera vez que se manda) - reusar la misma instancia en un
       // reintento de una subida de foto tira un StateError, no un

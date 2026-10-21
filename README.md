@@ -79,26 +79,60 @@ graph TD
 * [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.22)
 * [Docker & Docker Compose](https://www.docker.com/)
 
-### 1. Iniciar Base de Datos y Servicios
+### Opción A: todo con Docker (recomendada para probar la API)
+
 ```bash
 cd FLETAR_BACKEND
-docker-compose up -d
+cp .env.example .env   # completar POSTGRES_PASSWORD y FLETAR_JWT_KEY
+docker compose up --build
 ```
-Esto levantará PostgreSQL 16 con la extensión PostGIS habilitada en el puerto `5433`.
 
-### 2. Correr la API (.NET 8)
+La API queda en `http://localhost:8080` (Swagger en `/swagger`) y aplica las
+migraciones de EF Core al arrancar (`FLETAR_MIGRATE_ON_START=true`). PostgreSQL
+16 + PostGIS queda expuesto en el puerto `5433`.
+
 ```bash
+cd ../FLETAR_APP
+flutter pub get
+flutter run -d chrome --dart-define=FLETAR_API_URL=http://localhost:8080/api
+```
+
+### Opción B: API local + base en Docker
+
+```bash
+cd FLETAR_BACKEND
+cp .env.example .env   # completar POSTGRES_PASSWORD y FLETAR_JWT_KEY
+docker compose up -d db
+
+dotnet ef database update \
+  --project src/Fletar.DAL \
+  --startup-project src/Fletar.API
+
 cd src/Fletar.API
 dotnet run
 ```
-La API quedará escuchando en `http://localhost:5080` (Swagger disponible en `/swagger`).
 
-### 3. Correr la App Flutter
+La API queda en `http://localhost:5080` (Swagger en `/swagger`) y la app Flutter
+usa esa URL por defecto:
+
 ```bash
 cd ../../../FLETAR_APP
 flutter pub get
 flutter run -d chrome  # o dispositivo físico/emulador Android
 ```
+
+### Tests y CI
+
+```bash
+# Backend
+dotnet test FLETAR_BACKEND/Fletar.sln
+
+# App
+cd FLETAR_APP && flutter test
+```
+
+El workflow `.github/workflows/ci.yml` corre backend, tests de Flutter y un
+smoke test de Docker Compose en cada push/PR.
 
 ---
 
@@ -114,4 +148,4 @@ El sistema pasó por una auditoría integral de código y arquitectura, resolvie
 
 ## 📄 Licencia
 
-Código propietario. Todos los derechos reservados.
+Código propietario. Todos los derechos reservados. Ver [LICENSE](LICENSE).

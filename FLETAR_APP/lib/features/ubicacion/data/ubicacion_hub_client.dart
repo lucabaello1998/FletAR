@@ -33,6 +33,7 @@ class UbicacionHubClient {
             .withAutomaticReconnect()
             .build() {
     _connection.on('RecibirUbicacion', _alRecibirUbicacion);
+    _connection.on('SeguimientoRevocado', _alRevocarSeguimiento);
     // La reconexión automática no restaura sola los grupos del servidor (son
     // por conexión, y la reconexión abre una conexión nueva) - hay que
     // volver a pedir SeguirFletero por cada fletero que se estaba siguiendo.
@@ -48,6 +49,7 @@ class UbicacionHubClient {
 
   final HubConnection _connection;
   final _recibidas = StreamController<UbicacionActual>.broadcast();
+  final _revocados = StreamController<int>.broadcast();
   final _seguidosActualmente = <int>{};
   Future<void>? _conexionEnCurso;
   Timer? _reintentoTimer;
@@ -77,6 +79,11 @@ class UbicacionHubClient {
   /// `SeguimientoFleteroController` en ubicacion_providers.dart).
   Stream<UbicacionActual> get ubicacionesRecibidas => _recibidas.stream;
 
+  /// El backend corta el envío cuando el viaje termina o se cancela. Avisa
+  /// también por acá para que la pantalla no se quede mostrando el último pin
+  /// como si el fletero siguiera en vivo.
+  Stream<int> get seguimientosRevocados => _revocados.stream;
+
   void _alRecibirUbicacion(List<dynamic>? args) {
     if (args == null || args.length < 4) return;
     _recibidas.add(UbicacionActual(
@@ -85,6 +92,13 @@ class UbicacionHubClient {
       lng: (args[2] as num).toDouble(),
       fecha: DateTime.parse(args[3] as String),
     ));
+  }
+
+  void _alRevocarSeguimiento(List<dynamic>? args) {
+    if (args == null || args.isEmpty) return;
+    final usuarioId = args[0] as int;
+    _seguidosActualmente.remove(usuarioId);
+    _revocados.add(usuarioId);
   }
 
   /// Idempotente: si ya está conectado no hace nada, y si ya hay un intento de
@@ -138,6 +152,7 @@ class UbicacionHubClient {
     _disposed = true;
     _reintentoTimer?.cancel();
     await _recibidas.close();
+    await _revocados.close();
     await _connection.stop();
   }
 }

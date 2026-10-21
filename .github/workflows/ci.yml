@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: fletar
+          POSTGRES_USER: fletar
+          POSTGRES_PASSWORD: fletar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fletar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      FLETAR_CS: "Host=localhost;Port=5432;Database=fletar;Username=fletar;Password=fletar"
+      FLETAR_JWT_KEY: "ci-jwt-key-012345678901234567890123456789"
+      ASPNETCORE_ENVIRONMENT: Testing
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restore
+        run: dotnet restore FLETAR_BACKEND/Fletar.sln
+      - name: Build
+        run: dotnet build FLETAR_BACKEND/Fletar.sln --no-restore
+      - name: Test
+        run: dotnet test FLETAR_BACKEND/Fletar.sln --no-build --verbosity normal
+
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Pub get
+        working-directory: FLETAR_APP
+        run: flutter pub get
+      - name: Test
+        working-directory: FLETAR_APP
+        run: flutter test
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Levantar API + PostGIS y esperar /api/health
+        run: |
+          cd FLETAR_BACKEND
+          cp .env.example .env
+          sed -i 's/<password local>/ci-password/g' .env
+          sed -i 's/<clave aleatoria de al menos 32 caracteres>/ci-jwt-key-012345678901234567890123456789/g' .env
+          docker compose up --build -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/api/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: Bajar contenedores
+        if: always()
+        run: |
+          cd FLETAR_BACKEND
+          docker compose down -v
