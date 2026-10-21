@@ -29,6 +29,16 @@ public class UsuariosController(IUsuarioService usuarioService, IVerificacionIde
         return NoContent();
     }
 
+    /// Eliminación de cuenta desde la app (requisito de Google Play). El
+    /// cliente manda `{"confirmacion":"ELIMINAR"}`; el service anonimiza la
+    /// cuenta y borra documentos/fotos antes de cortar las sesiones.
+    [HttpDelete("me")]
+    public async Task<IActionResult> EliminarCuenta(EliminarCuentaRequest request)
+    {
+        await usuarioService.EliminarCuentaAsync(this.UsuarioIdActual(), request.Confirmacion);
+        return NoContent();
+    }
+
     // Foto de vehículo (Fase 8) - señal de confianza para cuando este usuario
     // oferta como fletero. Una sola por usuario, siempre sobre el propio
     // usuario logueado (nunca se recibe un id en la ruta) - reemplaza la

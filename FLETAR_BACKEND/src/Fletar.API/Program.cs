@@ -24,6 +24,22 @@ LoadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Monitoreo de errores (Sentry). Sin SENTRY_DSN la app arranca igual: el
+// servicio queda deshabilitado y no se manda nada. SendDefaultPii=false evita
+// mandar emails, IPs o cuerpos de request a un tercero.
+var sentryDsn = Environment.GetEnvironmentVariable("SENTRY_DSN");
+if (!string.IsNullOrWhiteSpace(sentryDsn))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.Environment = Environment.GetEnvironmentVariable("SENTRY_ENVIRONMENT")
+            ?? builder.Environment.EnvironmentName;
+        options.TracesSampleRate = 0.1;
+        options.SendDefaultPii = false;
+    });
+}
+
 // Railway/Render/Fly inyectan PORT y esperan que la app escuche ahí. En local
 // no existe, así que manda launchSettings/ASPNETCORE_URLS como siempre.
 var puertoPlataforma = Environment.GetEnvironmentVariable("PORT");
