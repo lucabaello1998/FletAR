@@ -13,14 +13,22 @@ using Google.Apis.Auth.OAuth2;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 
 LoadEnvFile();
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Railway/Render/Fly inyectan PORT y esperan que la app escuche ahí. En local
+// no existe, así que manda launchSettings/ASPNETCORE_URLS como siempre.
+var puertoPlataforma = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(puertoPlataforma))
+    builder.WebHost.UseUrls($"http://+:{puertoPlataforma}");
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
@@ -49,8 +57,16 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-var connectionString = Environment.GetEnvironmentVariable("FLETAR_CS")
-    ?? throw new InvalidOperationException("Falta la variable de entorno FLETAR_CS (ver .env.example).");
+// FLETAR_CS es el formato Npgsql que usamos en local/Compose. Los proveedores
+// administrados (Neon, Railway, Render) entregan DATABASE_URL con formato URI;
+// se traduce acá para no obligar a copiar/pegar la cadena a mano.
+var connectionString = Environment.GetEnvironmentVariable("FLETAR_CS");
+if (string.IsNullOrWhiteSpace(connectionString))
+    connectionString = ConnectionStringDesdeDatabaseUrl(Environment.GetEnvironmentVariable("DATABASE_URL"));
+
+if (string.IsNullOrWhiteSpace(connectionString))
+    throw new InvalidOperationException(
+        "Falta FLETAR_CS o DATABASE_URL (ver .env.example y DEPLOY.md).");
 
 var jwtSettings = new JwtSettings(
     key: Environment.GetEnvironmentVariable("FLETAR_JWT_KEY")
@@ -81,7 +97,12 @@ if (firebaseSettings.EstaConfigurado && FirebaseApp.DefaultInstance is null)
 // VerificacionIdentidadService.ObtenerDocumentoAsync + AdminController). No se
 // activa la convención genérica de wwwroot/UseStaticFiles() sin argumentos,
 // que serviría cualquier cosa que alguien deje ahí.
-var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
+// En producción el filesystem del contenedor es efímero: FLETAR_UPLOADS_PATH
+// apunta al volumen persistente (por ejemplo /data/uploads en Railway). En
+// local queda la carpeta uploads/ del proyecto.
+var uploadsPath = Environment.GetEnvironmentVariable("FLETAR_UPLOADS_PATH");
+if (string.IsNullOrWhiteSpace(uploadsPath))
+    uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "uploads");
 var almacenamientoSettings = new AlmacenamientoSettings(uploadsPath);
 Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPublicos, "publicaciones"));
 Directory.CreateDirectory(Path.Combine(almacenamientoSettings.RutaPublicos, "vehiculos"));
@@ -278,6 +299,65 @@ app.MapHub<UbicacionHub>("/hubs/ubicacion");
 app.MapHub<ChatHub>("/hubs/chat");
 
 app.Run();
+
+static string? ConnectionStringDesdeDatabaseUrl(string? databaseUrl)
+{
+    if (string.IsNullOrWhiteSpace(databaseUrl))
+        return null;
+
+    if (!Uri.TryCreate(databaseUrl, UriKind.Absolute, out var uri) ||
+        (uri.Scheme != "postgres" && uri.Scheme != "postgresql"))
+    {
+        throw new InvalidOperationException(
+            "DATABASE_URL debe ser una URL postgres://... o postgresql://...");
+    }
+
+    var credenciales = uri.UserInfo.Split(':', 2);
+    if (credenciales.Length == 0 || string.IsNullOrWhiteSpace(credenciales[0]))
+        throw new InvalidOperationException("DATABASE_URL no incluye usuario.");
+
+    var usuario = Uri.UnescapeDataString(credenciales[0]);
+    var password = credenciales.Length > 1
+        ? Uri.UnescapeDataString(credenciales[1])
+        : string.Empty;
+    var baseDatos = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/'));
+
+    if (string.IsNullOrWhiteSpace(baseDatos))
+        throw new InvalidOperationException("DATABASE_URL no incluye el nombre de la base.");
+
+    var sslMode = SslMode.Require;
+    foreach (var parametro in uri.Query.TrimStart('?')
+                 .Split('&', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var partes = parametro.Split('=', 2);
+        if (partes.Length != 2 ||
+            !partes[0].Equals("sslmode", StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        sslMode = Uri.UnescapeDataString(partes[1]).ToLowerInvariant() switch
+        {
+            "disable" => SslMode.Disable,
+            "allow" => SslMode.Allow,
+            "prefer" => SslMode.Prefer,
+            "require" => SslMode.Require,
+            "verify-ca" => SslMode.VerifyCA,
+            "verify-full" => SslMode.VerifyFull,
+            _ => SslMode.Require
+        };
+    }
+
+    return new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Database = baseDatos,
+        Username = usuario,
+        Password = password,
+        SslMode = sslMode
+    }.ConnectionString;
+}
 
 static void LoadEnvFile()
 {

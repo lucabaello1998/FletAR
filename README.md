@@ -134,6 +134,12 @@ cd FLETAR_APP && flutter test
 El workflow `.github/workflows/ci.yml` corre backend, tests de Flutter y un
 smoke test de Docker Compose en cada push/PR.
 
+### Deploy
+
+La guía para publicar la API con Neon (PostgreSQL + PostGIS) y Railway
+(Docker + SignalR) está en
+[`FLETAR_BACKEND/DEPLOY.md`](FLETAR_BACKEND/DEPLOY.md).
+
 ---
 
 ## 🔒 Endurecimiento y Seguridad
