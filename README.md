@@ -115,7 +115,9 @@ graph TD
 8. **Autocompletado de direcciones:** sugerencias de OpenStreetMap (Nominatim)
    que mueven el pin del mapa, y el mapa que completa la dirección al tocarlo
    (sincronización en los dos sentidos, en origen y destino). Si el buscador no
-   responde, la dirección se puede escribir a mano igual.
+   responde, la dirección se puede escribir a mano igual. El cliente quedó
+   extraído como paquete aparte:
+   [`direcciones_ar`](https://github.com/lucabaello1998/direcciones_ar).
 
 ---
 
