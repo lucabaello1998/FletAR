@@ -102,9 +102,10 @@ Lo que sigue, en orden de dependencia.
   las 07:24 UTC, con aviso de seguridad y recomendación de rotar variables. Los
   commits `b37165f`, `24de08f` y `9ff1613` quedaron **skipped**: producción sigue
   con el build del 21/10.
-- [x] `DATABASE_URL` actualizado en Railway.
-- [ ] Confirmar en Neon que la password del rol se reseteó (si no, el valor nuevo
-      de `DATABASE_URL` no conecta cuando se redeploye).
+- [ ] **No se rotó nada** (confirmado por el usuario el 22/10): `DATABASE_URL` y la
+      password de Neon siguen como estaban, y `FLETAR_JWT_KEY` tampoco se tocó. La
+      password de Neon estuvo expuesta en un chat, así que la rotación queda
+      pendiente junto con el resto del hardening.
 - [ ] Rotar `FLETAR_JWT_KEY` **pospuesto a propósito**: la app está en etapa de
       demostración, no hay usuarios reales y rotarlo invalida todas las sesiones.
       Hacerlo cuando se pase a producción en serio (junto con el hosting definitivo).
