@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'token_storage.dart';
 
@@ -7,10 +8,16 @@ import 'token_storage.dart';
 /// deja que el error siga su curso - la UI redirige a login leyendo el estado
 /// de auth (ver `authProvider` en features/auth).
 class AuthInterceptor extends Interceptor {
-  AuthInterceptor(this._tokenStorage, this._baseUrl);
+  AuthInterceptor(this._tokenStorage, this._baseUrl, {this.onSesionExpirada});
 
   final TokenStorage _tokenStorage;
   final String _baseUrl;
+
+  /// Se llama sólo si la request salió con un access token y la sesión no se
+  /// pudo recuperar (refresh vencido/revocado o reintento fallido). Un login
+  /// con contraseña incorrecta no la dispara: esa request no lleva token.
+  final VoidCallback? onSesionExpirada;
+
   Future<String>? _refreshEnCurso;
 
   @override
@@ -26,6 +33,7 @@ class AuthInterceptor extends Interceptor {
   Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
     final esNoAutorizado = err.response?.statusCode == 401;
     final yaReintentado = err.requestOptions.extra['reintentadoTrasRefresh'] == true;
+    final teniaToken = err.requestOptions.headers['Authorization'] != null;
 
     if (!esNoAutorizado || yaReintentado) {
       handler.next(err);
@@ -47,6 +55,7 @@ class AuthInterceptor extends Interceptor {
 
     final refreshToken = await _tokenStorage.leerRefreshToken();
     if (refreshToken == null) {
+      if (teniaToken) await _cerrarSesion();
       handler.next(err);
       return;
     }
@@ -63,8 +72,10 @@ class AuthInterceptor extends Interceptor {
       // cada continuación hasta el próximo await sin interrupción.
       final accessToken = await (_refreshEnCurso ??= _refrescar(refreshToken));
       await _reintentar(err, accessToken, handler);
-    } on DioException {
-      await _tokenStorage.limpiar();
+    } catch (_) {
+      // Cualquier falla del refresh (token vencido, revocado, sin red, body
+      // raro) deja la sesión inservible: se limpia y se avisa a la UI.
+      await _cerrarSesion();
       handler.next(err);
     }
   }
@@ -89,10 +100,25 @@ class AuthInterceptor extends Interceptor {
       final dioOriginal = Dio(BaseOptions(baseUrl: _baseUrl));
       final reintento = await dioOriginal.fetch(requestOriginal);
       handler.resolve(reintento);
-    } on DioException {
-      await _tokenStorage.limpiar();
+    } on DioException catch (errorDelReintento) {
+      // Sólo se cierra la sesión si el reintento volvió a dar 401. Un 502, un
+      // timeout o una subida que se cortó son transitorios: desloguear ahí
+      // obligaba a volver a entrar por un blip de red en medio de una foto.
+      if (errorDelReintento.response?.statusCode == 401) {
+        await _cerrarSesion();
+      }
+      handler.next(err);
+    } catch (_) {
+      // Cualquier otra cosa (un body inesperado al parsear, etc.) no puede
+      // dejar el handler sin resolver: la request quedaría colgada para
+      // siempre y la UI girando.
       handler.next(err);
     }
+  }
+
+  Future<void> _cerrarSesion() async {
+    await _tokenStorage.limpiar();
+    onSesionExpirada?.call();
   }
 
   Future<String> _refrescar(String refreshToken) async {
@@ -103,11 +129,21 @@ class AuthInterceptor extends Interceptor {
         data: {'refreshToken': refreshToken},
       );
 
-      final accessToken = response.data['accessToken'] as String;
-      await _tokenStorage.guardar(
-        accessToken: accessToken,
-        refreshToken: response.data['refreshToken'] as String,
-      );
+      final cuerpo = response.data;
+      final accessToken = cuerpo is Map ? cuerpo['accessToken'] : null;
+      final refreshNuevo = cuerpo is Map ? cuerpo['refreshToken'] : null;
+      if (accessToken is! String || refreshNuevo is! String) {
+        // Un 200 con un cuerpo inesperado no es un DioException para Dio: si se
+        // dejaba pasar, el cast explotaba con TypeError, el `onError` no lo
+        // agarraba y la request quedaba colgada.
+        throw DioException(
+          requestOptions: response.requestOptions,
+          response: response,
+          type: DioExceptionType.badResponse,
+        );
+      }
+
+      await _tokenStorage.guardar(accessToken: accessToken, refreshToken: refreshNuevo);
       return accessToken;
     } finally {
       _refreshEnCurso = null;

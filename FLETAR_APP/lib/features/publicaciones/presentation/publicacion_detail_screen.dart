@@ -403,7 +403,7 @@ class _DetalleCargado extends ConsumerWidget {
           const SizedBox(height: 16),
           _filaDato(context, Icons.event_outlined, 'Publicada el ${_formatearFecha(publicacion.fechaPublicacion)}'),
           if (publicacion.fechaDeseada != null)
-            _filaDato(context, Icons.schedule_outlined, 'Deseada para ${_formatearFecha(publicacion.fechaDeseada!)}'),
+            _filaDato(context, Icons.schedule_outlined, 'Deseada para el ${_formatearSoloFecha(publicacion.fechaDeseada!)}'),
           const Divider(height: 32),
           Text('Ofertas', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -917,6 +917,16 @@ String _formatearFecha(DateTime fecha) {
   final hora = local.hour.toString().padLeft(2, '0');
   final minuto = local.minute.toString().padLeft(2, '0');
   return '$dia/$mes/${local.year} $hora:$minuto';
+}
+
+/// `fechaDeseada` es un día, no un instante (se guarda al mediodía UTC para que
+/// caiga en el mismo día calendario en cualquier huso): mostrarle la hora al
+/// usuario sólo suma ruido y confusión.
+String _formatearSoloFecha(DateTime fecha) {
+  final local = fecha.toLocal();
+  final dia = local.day.toString().padLeft(2, '0');
+  final mes = local.month.toString().padLeft(2, '0');
+  return '$dia/$mes/${local.year}';
 }
 
 /// "hace 12s" / "hace 3 min" / "hace 2 h" - qué tan fresca es una posición en

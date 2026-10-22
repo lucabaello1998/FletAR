@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'auth_interceptor.dart';
 import 'token_storage.dart';
@@ -9,9 +10,11 @@ import 'token_storage.dart';
 const _apiUrlPorDefecto = 'http://localhost:5080/api';
 const apiBaseUrl = String.fromEnvironment('FLETAR_API_URL', defaultValue: _apiUrlPorDefecto);
 
-Dio crearDioClient(TokenStorage tokenStorage) {
+Dio crearDioClient(TokenStorage tokenStorage, {VoidCallback? onSesionExpirada}) {
   final dio = Dio(BaseOptions(baseUrl: apiBaseUrl));
-  dio.interceptors.add(AuthInterceptor(tokenStorage, apiBaseUrl));
+  dio.interceptors.add(
+    AuthInterceptor(tokenStorage, apiBaseUrl, onSesionExpirada: onSesionExpirada),
+  );
   return dio;
 }
 

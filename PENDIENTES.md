@@ -65,3 +65,34 @@ Lo que sigue, en orden de dependencia.
 - [ ] Prueba manual en un teléfono físico: push en background, GPS con pantalla apagada,
       cámara/galería, deep links.
 - [ ] Accesibilidad y textos (revisar acentos/encoding en algunos mensajes heredados).
+
+## 5. Autocompletado de direcciones y auditoría (21/10/2026)
+
+- [x] **Autocompletar direcciones** en origen y destino con Nominatim (OpenStreetMap,
+      sin API key): debounce de 650 ms, mínimo 4 caracteres, caché en memoria y cola
+      de 1 request/1,1 s. Si el geocoder falla, el campo sigue aceptando texto libre.
+- [x] **Sincronización bidireccional**: elegir una sugerencia mueve el pin del mapa, y
+      tocar el mapa completa la dirección con geocodificación reversa. Si se escribe la
+      dirección sin elegir sugerencia, al publicar se intenta ubicarla antes de rechazar.
+- [x] **Cartel de error al publicar**: era un 500 real - `fechaDeseada` llegaba como
+      `DateTime` sin zona y Npgsql no puede escribir eso en `timestamp with time zone`.
+      Se normaliza en el backend y la app manda el mediodía UTC del día elegido (es un
+      dato de calendario, no un instante).
+- [x] **Sesión vencida**: cuando el refresh token deja de servir, la app limpia los
+      tokens y vuelve al login con un aviso, en vez de quedar "logueada" con cada acción
+      fallando. Los `title` de error ya no muestran "Error interno" ni "ocurrió un error
+      inesperado" para 401/403/404/429/5xx.
+- [x] **Auditoría aplicada (backend)**: `UseForwardedHeaders` para que el rate limit sea
+      por IP real (antes era global), validaciones de registro (`[EmailAddress]`,
+      contraseña 8-128), `403` para "no sos el dueño" (antes 401 y el cliente refrescaba
+      en loop), 409 para choques de índice único, límites de `pageSize` y de radio en
+      `/cercanas`, `catch` de los pushes de FCM (podían convertir una operación ya
+      guardada en 500) y borrado de archivos de cuenta **después** del commit.
+- [x] **Auditoría aplicada (app)**: candado anti doble envío, validación de categoría
+      cuando falla el provider, `TapRegion` para cerrar la lista de sugerencias,
+      confirmación al quitar el destino, fecha del date picker acotada y carreras del
+      geocoder descartadas por número de solicitud.
+- [ ] Desplegar este commit en Railway (el `DELETE /usuarios/me` todavía no está en
+      producción: la API respondió 404 en la prueba E2E).
+- [ ] `GET /api/health/ready` queda disponible para usar como healthcheck con chequeo de
+      base; hoy Railway sigue usando `/api/health` (liveness).

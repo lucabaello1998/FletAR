@@ -103,6 +103,11 @@ graph TD
 6. **Reputación:** calificaciones mutuas post-entrega.
 7. **Eliminación de cuenta:** requisito de Google Play y de la Ley 25.326.
 
+8. **Autocompletado de direcciones:** sugerencias de OpenStreetMap (Nominatim)
+   que mueven el pin del mapa, y el mapa que completa la dirección al tocarlo
+   (sincronización en los dos sentidos, en origen y destino). Si el buscador no
+   responde, la dirección se puede escribir a mano igual.
+
 ---
 
 ## Puesta en marcha local

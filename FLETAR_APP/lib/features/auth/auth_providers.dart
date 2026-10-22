@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/network/dio_client.dart';
+import '../../core/network/sesion_expirada.dart';
 import '../../core/network/token_storage.dart';
 import '../../core/notificaciones/fcm_service.dart';
 import '../../core/scaffold_messenger_key.dart';
@@ -15,7 +16,18 @@ import 'domain/usuario.dart';
 
 final tokenStorageProvider = Provider<TokenStorage>((ref) => TokenStorage());
 
-final dioProvider = Provider((ref) => crearDioClient(ref.watch(tokenStorageProvider)));
+/// Puente entre el interceptor HTTP (sin Riverpod) y la UI: cuando el refresh
+/// token vence o se revoca, la app vuelve a login en vez de quedar "logueada"
+/// con cada acción fallando.
+final sesionExpiradaProvider =
+    ChangeNotifierProvider<SesionExpiradaNotifier>((ref) => SesionExpiradaNotifier());
+
+final dioProvider = Provider((ref) {
+  return crearDioClient(
+    ref.watch(tokenStorageProvider),
+    onSesionExpirada: () => ref.read(sesionExpiradaProvider).notificar(),
+  );
+});
 
 final authApiProvider = Provider((ref) => AuthApi(ref.watch(dioProvider)));
 
@@ -40,6 +52,21 @@ class AuthController extends AsyncNotifier<Usuario?> {
       _fcmTokenRefreshSub?.cancel();
       _fcmMessageSub?.cancel();
     });
+
+    // Sesión vencida (refresh fallido): volver a login en vez de dejar la app
+    // en un estado donde todo falla.
+    final sesionExpirada = ref.watch(sesionExpiradaProvider);
+    void alExpirarSesion() {
+      if (state.valueOrNull == null) return;
+      state = const AsyncData(null);
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Tu sesión expiró. Volvé a iniciar sesión.')),
+      );
+    }
+
+    sesionExpirada.addListener(alExpirarSesion);
+    ref.onDispose(() => sesionExpirada.removeListener(alExpirarSesion));
+
     // No se espera este future: si Google Sign-In no está configurado o falla
     // al inicializar, el resto del login (email/password) no tiene que verse
     // afectado.

@@ -56,9 +56,20 @@ class PublicacionesApi {
       'destinoLatitud': destinoLatitud,
       'destinoLongitud': destinoLongitud,
       'destinoDireccionTexto': destinoDireccionTexto,
-      'fechaDeseada': fechaDeseada?.toIso8601String(),
+      'fechaDeseada': _fechaDeseadaIso(fechaDeseada),
     });
     return Publicacion.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// `fechaDeseada` es una FECHA (el día en que se necesita el flete), no un
+  /// instante. La columna en Postgres es `timestamptz`, así que mandar el 00:00
+  /// local como UTC hacía que en Argentina se mostrara el día anterior (las
+  /// 21:00 del día previo). Se manda el mediodía UTC de ese día: cualquier huso
+  /// entre UTC-11 y UTC+11 sigue mostrando el mismo día calendario.
+  String? _fechaDeseadaIso(DateTime? fecha) {
+    if (fecha == null) return null;
+    final local = fecha.toLocal();
+    return DateTime.utc(local.year, local.month, local.day, 12).toIso8601String();
   }
 
   Future<Publicacion> editar(
@@ -86,7 +97,7 @@ class PublicacionesApi {
       'destinoLatitud': destinoLatitud,
       'destinoLongitud': destinoLongitud,
       'destinoDireccionTexto': destinoDireccionTexto,
-      'fechaDeseada': fechaDeseada?.toIso8601String(),
+      'fechaDeseada': _fechaDeseadaIso(fechaDeseada),
     });
     return Publicacion.fromJson(response.data as Map<String, dynamic>);
   }
@@ -130,8 +141,8 @@ class PublicacionesApi {
         .toList();
   }
 
-  // Fotos de carga (Fase 8) - sólo el dueño puede agregar/borrar (lo valida
-  // el backend, esto no duplica esa regla), públicas para cualquiera que vea
+  // Fotos de carga (Fase 8) - sÃ³lo el dueÃ±o puede agregar/borrar (lo valida
+  // el backend, esto no duplica esa regla), pÃºblicas para cualquiera que vea
   // el detalle.
   Future<PublicacionFoto> agregarFoto(int publicacionId, XFile archivo) async {
     final bytes = await archivo.readAsBytes();

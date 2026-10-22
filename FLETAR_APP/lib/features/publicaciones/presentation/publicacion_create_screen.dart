@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -8,12 +7,13 @@ import 'package:latlong2/latlong.dart' as ll;
 import '../../../core/errores.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/theme/fletar_colors.dart';
+import '../../ubicacion/data/geocoding_api.dart';
+import '../../ubicacion/domain/sugerencia_direccion.dart';
+import '../../ubicacion/presentation/direccion_autocomplete_field.dart';
+import '../../ubicacion/presentation/mapa_selector_ubicacion.dart';
 import '../domain/publicacion.dart';
 import '../domain/publicacion_foto.dart';
 import '../publicaciones_providers.dart';
-
-/// Punto inicial del mapa cuando todavía no se tocó ningún lugar: Buenos Aires.
-const _puntoInicialBuenosAires = ll.LatLng(-34.6037, -58.3816);
 
 class PublicacionCreateScreen extends ConsumerStatefulWidget {
   const PublicacionCreateScreen({this.publicacionAEditar, super.key});
@@ -42,6 +42,20 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
   ll.LatLng? _destinoSeleccionado;
   DateTime? _fechaDeseada;
 
+  // Geocodificación reversa (tocar el mapa → completar la dirección). El
+  // contador descarta respuestas viejas cuando se toca el mapa varias veces
+  // seguidas: la última elección es la que manda.
+  bool _buscandoDireccionOrigen = false;
+  bool _buscandoDireccionDestino = false;
+  int _solicitudReversaOrigen = 0;
+  int _solicitudReversaDestino = 0;
+
+  /// Candado de reentrada del botón: `createState.isLoading` se pone en true
+  /// recién cuando arranca el POST, y antes de eso `_enviar` puede esperar
+  /// varios segundos al geocoder (cola de Nominatim de 1 req/1,1 s + timeout de
+  /// 8 s). Sin esto, dos toques seguidos creaban dos publicaciones iguales.
+  bool _enviando = false;
+
   bool get _esEdicion => widget.publicacionAEditar != null;
 
   @override
@@ -62,6 +76,11 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
     if (destinoLat != null && destinoLng != null) {
       _tieneDestino = true;
       _destinoSeleccionado = ll.LatLng(destinoLat, destinoLng);
+    } else if (publicacion.destinoDireccionTexto?.trim().isNotEmpty ?? false) {
+      // Publicaciones viejas o creadas con sólo el texto de destino: al editar
+      // hay que mostrar el campo igual, o el switch apagado borraría la
+      // dirección de destino sin que el usuario lo note.
+      _tieneDestino = true;
     }
     _fechaDeseada = publicacion.fechaDeseada;
   }
@@ -76,30 +95,189 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
   }
 
   Future<void> _elegirFechaDeseada() async {
+    final hoy = DateUtils.dateOnly(DateTime.now());
+    final elegida = _fechaDeseada == null ? null : DateUtils.dateOnly(_fechaDeseada!);
+    // Si la fecha guardada ya quedó en el pasado (publicación vieja), showDatePicker
+    // revienta si initialDate < firstDate: se arranca en hoy en ese caso.
+    final inicial = elegida == null || elegida.isBefore(hoy) ? hoy : elegida;
     final fecha = await showDatePicker(
       context: context,
-      initialDate: _fechaDeseada ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: inicial,
+      firstDate: hoy,
+      lastDate: hoy.add(const Duration(days: 365)),
+      helpText: 'Fecha en la que necesitás el flete',
     );
+    if (!mounted) return;
     if (fecha != null) setState(() => _fechaDeseada = fecha);
   }
 
+  /// Sugerencia elegida en el autocompletado de origen: el pin del mapa salta
+  /// a esas coordenadas (el mapa se recentra solo, ver MapaSelectorUbicacion).
+  void _alElegirDireccionOrigen(SugerenciaDireccion sugerencia) {
+    // Elegir una sugerencia cancela cualquier geocodificación reversa en vuelo:
+    // si el reverse del último toque al mapa llega después, pisaría la
+    // dirección que el usuario acaba de elegir.
+    _solicitudReversaOrigen++;
+    setState(() {
+      _buscandoDireccionOrigen = false;
+      _origenSeleccionado = ll.LatLng(sugerencia.latitud, sugerencia.longitud);
+    });
+  }
+
+  /// Misma lógica para destino. Además enciende el switch: elegir una
+  /// dirección de destino implica que el flete tiene destino conocido.
+  void _alElegirDireccionDestino(SugerenciaDireccion sugerencia) {
+    _solicitudReversaDestino++;
+    setState(() {
+      _tieneDestino = true;
+      _buscandoDireccionDestino = false;
+      _destinoSeleccionado = ll.LatLng(sugerencia.latitud, sugerencia.longitud);
+    });
+  }
+
+  /// Tocar el mapa fija el punto y completa la dirección con la geocodificación
+  /// reversa (la dirección "va y viene" entre el campo y el mapa).
+  Future<void> _alTocarMapaOrigen(ll.LatLng punto) async {
+    final solicitud = ++_solicitudReversaOrigen;
+    setState(() {
+      _origenSeleccionado = punto;
+      _buscandoDireccionOrigen = true;
+    });
+
+    final sugerencia = await ref.read(geocodingApiProvider).reversa(punto.latitude, punto.longitude);
+    if (!mounted || solicitud != _solicitudReversaOrigen) return;
+
+    setState(() => _buscandoDireccionOrigen = false);
+    if (sugerencia != null) {
+      _direccionController.text = sugerencia.direccionCorta;
+    }
+  }
+
+  Future<void> _alTocarMapaDestino(ll.LatLng punto) async {
+    final solicitud = ++_solicitudReversaDestino;
+    setState(() {
+      _destinoSeleccionado = punto;
+      _buscandoDireccionDestino = true;
+    });
+
+    final sugerencia = await ref.read(geocodingApiProvider).reversa(punto.latitude, punto.longitude);
+    if (!mounted || solicitud != _solicitudReversaDestino) return;
+
+    setState(() => _buscandoDireccionDestino = false);
+    if (sugerencia != null) {
+      _direccionDestinoController.text = sugerencia.direccionCorta;
+    }
+  }
+
+  String _textoCoordenadas(ll.LatLng punto) =>
+      'Lat: ${punto.latitude.toStringAsFixed(6)} · Lng: ${punto.longitude.toStringAsFixed(6)}';
+
+  /// Apagar el switch borra el destino guardado: se pregunta antes en vez de
+  /// perderlo por un toque accidental (el switch está pegado al mapa).
+  Future<void> _alCambiarTieneDestino(bool value) async {
+    if (!value) {
+      final teniaDestino =
+          _destinoSeleccionado != null || _direccionDestinoController.text.trim().isNotEmpty;
+      if (teniaDestino) {
+        final confirmar = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('¿Quitar el destino?'),
+            content: const Text('Se va a borrar la dirección y el punto de destino de esta publicación.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Quitar'),
+              ),
+            ],
+          ),
+        );
+        if (confirmar != true) return;
+        _direccionDestinoController.clear();
+        _destinoSeleccionado = null;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _tieneDestino = value);
+  }
+
+
+  /// Último recurso cuando escribieron una dirección pero nunca eligieron una
+  /// sugerencia ni tocaron el mapa: se intenta ubicar el texto tal cual antes
+  /// de rechazar el formulario. Si el geocoder no la encuentra, se le pide al
+  /// usuario que marque el punto a mano.
+  Future<ll.LatLng?> _puntoDesdeDireccion(String texto) async {
+    if (texto.trim().length < minimoCaracteresBusqueda) return null;
+    try {
+      final sugerencias = await ref.read(geocodingApiProvider).buscar(texto, limite: 1);
+      if (sugerencias.isEmpty) return null;
+      return ll.LatLng(sugerencias.first.latitud, sugerencias.first.longitud);
+    } on GeocodingNoDisponible {
+      return null;
+    }
+  }
+
   Future<void> _enviar() async {
+    if (_enviando) return;
     if (!_formKey.currentState!.validate()) return;
-    final origen = _origenSeleccionado;
-    if (origen == null) {
+
+    // `validate()` no cubre la categoría si `categoriasCargaProvider` falló: en
+    // ese caso el dropdown no está en el árbol, su validator nunca corre y
+    // `_categoriaCargaId` sigue en null (antes el `!` explotaba al enviar).
+    final categoriaCargaId = _categoriaCargaId;
+    if (categoriaCargaId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tocá el mapa para marcar el origen del flete')),
+        const SnackBar(content: Text('Elegí una categoría de carga para continuar.')),
       );
       return;
     }
-    final destino = _destinoSeleccionado;
+
+    setState(() => _enviando = true);
+    try {
+      await _enviarConDatos(categoriaCargaId);
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<void> _enviarConDatos(int categoriaCargaId) async {
+    var origen = _origenSeleccionado;
+    if (origen == null) {
+      final ubicado = await _puntoDesdeDireccion(_direccionController.text);
+      if (!mounted) return;
+      if (ubicado == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No pudimos ubicar la dirección. Tocá el mapa para marcar el origen.'),
+          ),
+        );
+        return;
+      }
+      setState(() => _origenSeleccionado = ubicado);
+      origen = ubicado;
+    }
+
+    var destino = _destinoSeleccionado;
     if (_tieneDestino && destino == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tocá el mapa de destino para marcar el punto, o desmarcá "Tiene destino"')),
-      );
-      return;
+      final ubicado = await _puntoDesdeDireccion(_direccionDestinoController.text);
+      if (!mounted) return;
+      if (ubicado == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No pudimos ubicar la dirección de destino. Tocá el mapa de destino o desmarcá "Tiene destino".',
+            ),
+          ),
+        );
+        return;
+      }
+      setState(() => _destinoSeleccionado = ubicado);
+      destino = ubicado;
     }
 
     final destinoLatitud = _tieneDestino ? destino!.latitude : null;
@@ -113,7 +291,7 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
       await ref.read(publicacionEditControllerProvider(widget.publicacionAEditar!.id).notifier).editar(
             titulo: _tituloController.text.trim(),
             descripcion: _descripcionController.text.trim(),
-            categoriaCargaId: _categoriaCargaId!,
+            categoriaCargaId: categoriaCargaId,
             tipoVehiculoSugeridoId: _tipoVehiculoSugeridoId,
             latitud: origen.latitude,
             longitud: origen.longitude,
@@ -127,7 +305,7 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
       await ref.read(publicacionCreateControllerProvider.notifier).crear(
             titulo: _tituloController.text.trim(),
             descripcion: _descripcionController.text.trim(),
-            categoriaCargaId: _categoriaCargaId!,
+            categoriaCargaId: categoriaCargaId,
             tipoVehiculoSugeridoId: _tipoVehiculoSugeridoId,
             latitud: origen.latitude,
             longitud: origen.longitude,
@@ -258,11 +436,14 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                       error: (error, stackTrace) => Text(mensajeDeError(error)),
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
+                    DireccionAutocompleteField(
                       controller: _direccionController,
-                      decoration: const InputDecoration(labelText: 'Dirección de origen'),
+                      label: 'Dirección de origen',
+                      hintText: 'Calle y altura, por ej. Italia 2274',
+                      textoAyuda: 'Elegí una sugerencia o tocá el mapa: se completan solos.',
                       validator: (v) =>
                           (v == null || v.trim().isEmpty) ? 'Ingresá una dirección' : null,
+                      onSeleccionada: _alElegirDireccionOrigen,
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -270,16 +451,17 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                       style: Theme.of(context).textTheme.labelLarge,
                     ),
                     const SizedBox(height: 8),
-                    _MapaSeleccionOrigen(
+                    MapaSelectorUbicacion(
                       seleccionado: _origenSeleccionado,
-                      onTap: (punto) => setState(() => _origenSeleccionado = punto),
+                      onTap: _alTocarMapaOrigen,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _origenSeleccionado == null
-                          ? 'Sin punto marcado todavía'
-                          : 'Lat: ${_origenSeleccionado!.latitude.toStringAsFixed(6)} · '
-                              'Lng: ${_origenSeleccionado!.longitude.toStringAsFixed(6)}',
+                      _buscandoDireccionOrigen
+                          ? 'Buscando la dirección del punto marcado…'
+                          : _origenSeleccionado == null
+                              ? 'Sin punto marcado todavía'
+                              : _textoCoordenadas(_origenSeleccionado!),
                       style: const TextStyle(color: FletarColors.mutedForeground),
                     ),
                     const SizedBox(height: 16),
@@ -287,13 +469,15 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                       contentPadding: EdgeInsets.zero,
                       title: const Text('¿Tiene destino conocido?'),
                       value: _tieneDestino,
-                      onChanged: (value) => setState(() => _tieneDestino = value),
+                      onChanged: _alCambiarTieneDestino,
                     ),
                     if (_tieneDestino) ...[
                       const SizedBox(height: 8),
-                      TextFormField(
+                      DireccionAutocompleteField(
                         controller: _direccionDestinoController,
-                        decoration: const InputDecoration(labelText: 'Dirección de destino (opcional)'),
+                        label: 'Dirección de destino (opcional)',
+                        hintText: 'Calle y altura del destino',
+                        onSeleccionada: _alElegirDireccionDestino,
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -301,16 +485,17 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                         style: Theme.of(context).textTheme.labelLarge,
                       ),
                       const SizedBox(height: 8),
-                      _MapaSeleccionOrigen(
+                      MapaSelectorUbicacion(
                         seleccionado: _destinoSeleccionado,
-                        onTap: (punto) => setState(() => _destinoSeleccionado = punto),
+                        onTap: _alTocarMapaDestino,
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _destinoSeleccionado == null
-                            ? 'Sin punto marcado todavía'
-                            : 'Lat: ${_destinoSeleccionado!.latitude.toStringAsFixed(6)} · '
-                                'Lng: ${_destinoSeleccionado!.longitude.toStringAsFixed(6)}',
+                        _buscandoDireccionDestino
+                            ? 'Buscando la dirección del punto marcado…'
+                            : _destinoSeleccionado == null
+                                ? 'Sin punto marcado todavía'
+                                : _textoCoordenadas(_destinoSeleccionado!),
                         style: const TextStyle(color: FletarColors.mutedForeground),
                       ),
                     ],
@@ -332,8 +517,8 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: createState.isLoading ? null : _enviar,
-                      child: createState.isLoading
+                      onPressed: createState.isLoading || _enviando ? null : _enviar,
+                      child: createState.isLoading || _enviando
                           ? const SizedBox(
                               height: 20,
                               width: 20,
@@ -346,47 +531,6 @@ class _PublicacionCreateScreenState extends ConsumerState<PublicacionCreateScree
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MapaSeleccionOrigen extends StatelessWidget {
-  const _MapaSeleccionOrigen({required this.seleccionado, required this.onTap});
-
-  final ll.LatLng? seleccionado;
-  final ValueChanged<ll.LatLng> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        height: 260,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: seleccionado ?? _puntoInicialBuenosAires,
-            initialZoom: 12,
-            onTap: (tapPosition, punto) => onTap(punto),
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'ar.fletar.app',
-            ),
-            if (seleccionado != null)
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: seleccionado!,
-                    width: 40,
-                    height: 40,
-                    child: const Icon(Icons.location_pin, color: FletarColors.primary, size: 40),
-                  ),
-                ],
-              ),
-          ],
         ),
       ),
     );
