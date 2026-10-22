@@ -14,6 +14,16 @@ quienes necesitan transportar una carga con fleteros, mediante un esquema de
 **subasta a ciegas**, reputación pública, verificación de identidad, chat y
 seguimiento GPS en tiempo real.
 
+> **Probarlo:** [APK de la última release](https://github.com/lucabaello1998/FletAR/releases/latest)
+> · [Landing del proyecto](https://lucabaello1998.github.io/FletAR/)
+> · [API en producción](https://fletar-production.up.railway.app/api/health)
+
+## Capturas
+
+| Publicar con autocompletado | Mapa sincronizado | Ofertas | Chat |
+|---|---|---|---|
+| ![Crear publicación](docs/capturas/01-crear-publicacion.png) | ![Mapa](docs/capturas/02-mapa-direccion.png) | ![Ofertas](docs/capturas/03-detalle-ofertas.png) | ![Chat](docs/capturas/04-chat.png) |
+
 ## Estado
 
 - **API en producción:** <https://fletar-production.up.railway.app> — healthcheck
@@ -102,11 +112,41 @@ graph TD
    moderación.
 6. **Reputación:** calificaciones mutuas post-entrega.
 7. **Eliminación de cuenta:** requisito de Google Play y de la Ley 25.326.
-
 8. **Autocompletado de direcciones:** sugerencias de OpenStreetMap (Nominatim)
    que mueven el pin del mapa, y el mapa que completa la dirección al tocarlo
    (sincronización en los dos sentidos, en origen y destino). Si el buscador no
    responde, la dirección se puede escribir a mano igual.
+
+---
+
+## Decisiones técnicas
+
+Las que más pesan en el diseño y por qué (no están elegidas por moda):
+
+- **PostGIS en vez de "calcular distancias en el cliente".** El listado de
+  fletes cercanos se resuelve con `ST_DWithin` sobre `geography(Point, 4326)` e
+  índice GIST: el radio se mide en metros reales, no en grados, y no hay que
+  traer la tabla entera para filtrar en memoria.
+- **Subasta a ciegas a nivel de consulta.** Las ofertas de una publicación se
+  proyectan sin exponer el monto de los demás oferentes; la competencia real
+  queda sólo en la base. El dueño de la publicación sí ve todas, porque es
+  quien decide.
+- **Máquina de estados con transiciones validadas en el servicio.** Cancelar,
+  iniciar o completar no son `UPDATE` sueltos: cada transición valida el estado
+  actual, el rol y (cuando aplica) que el fletero sea el de la oferta aceptada.
+- **Rotación de refresh tokens con detección de reúso.** Cada refresh emite uno
+  nuevo y si llega uno ya usado se revoca la familia completa: si roban un
+  token, el atacante y la víctima se desloguean, en vez de convivir en silencio.
+- **Single-flight en el refresh del cliente.** Al abrir la app salen varias
+  requests a la vez; si todas reciben 401, todas esperan **el mismo** refresh.
+  Refrescar en paralelo con el mismo token dispararía la detección de reúso del
+  backend y desloguearía al usuario sin motivo.
+- **Nominatim con cola de 1 request/1,1 s.** El autocompletado es una ayuda, no
+  un requisito: si el geocoder no responde, el campo sigue aceptando texto
+  libre y el punto se marca a mano.
+- **Archivos en disco con dos raíces separadas.** `uploads/publico` (fotos de
+  carga y vehículo) y `uploads/privado` (documentos de identidad) se sirven con
+  rutas distintas y validación de MIME, extensión y magic bytes.
 
 ---
 
