@@ -3,6 +3,7 @@ using Fletar.BLL.Services.Publicaciones;
 using Fletar.DTO.Publicaciones;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 
 namespace Fletar.API.Controllers;
 
@@ -26,7 +27,9 @@ public class PublicacionesController(IPublicacionService publicacionService, IOf
 
     [HttpGet("cercanas")]
     public async Task<ActionResult<IReadOnlyList<PublicacionResponse>>> ListarCercanas(
-        [FromQuery] double lat, [FromQuery] double lng, [FromQuery] double radioKm)
+        [FromQuery, Range(-90d, 90d, ErrorMessage = "La latitud debe estar entre -90 y 90.")] double lat,
+        [FromQuery, Range(-180d, 180d, ErrorMessage = "La longitud debe estar entre -180 y 180.")] double lng,
+        [FromQuery, Range(0.1d, 200d, ErrorMessage = "El radio debe estar entre 0.1 y 200 km.")] double radioKm)
         => Ok(await publicacionService.ListarCercanasAsync(lat, lng, radioKm));
 
     [HttpPut("{id:int}")]

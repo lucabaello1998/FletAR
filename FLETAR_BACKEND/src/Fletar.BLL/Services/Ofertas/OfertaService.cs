@@ -1,4 +1,5 @@
 using AutoMapper;
+using Fletar.BLL.Exceptions;
 using Fletar.BLL.Services.Notificaciones;
 using Fletar.DAL;
 using Fletar.DAL.Models;
@@ -86,7 +87,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         var publicacion = await BuscarPublicacionOFallarAsync(publicacionId);
 
         if (publicacion.UsuarioId != usuarioIdQueAcepta)
-            throw new UnauthorizedAccessException("No tenés permiso para aceptar ofertas de esta publicación.");
+            throw new AccesoDenegadoException("No tenés permiso para aceptar ofertas de esta publicación.");
 
         if (publicacion.Estado != EstadoPublicacion.Publicada)
             throw new InvalidOperationException("Sólo se puede aceptar una oferta cuando la publicación está en estado Publicada.");
@@ -177,7 +178,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         var oferta = await BuscarOfertaOFallarAsync(ofertaId);
 
         if (oferta.UsuarioId != usuarioIdQueRetira)
-            throw new UnauthorizedAccessException("No tenés permiso para retirar esta oferta.");
+            throw new AccesoDenegadoException("No tenés permiso para retirar esta oferta.");
 
         if (oferta.Estado != EstadoOferta.Pendiente)
             throw new InvalidOperationException("Sólo se puede retirar una oferta que esté Pendiente.");
@@ -210,7 +211,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         var publicacion = await BuscarPublicacionOFallarAsync(publicacionId);
 
         if (publicacion.UsuarioId != usuarioIdDueno)
-            throw new UnauthorizedAccessException("No tenés permiso para iniciar esta publicación.");
+            throw new AccesoDenegadoException("No tenés permiso para iniciar esta publicación.");
 
         if (publicacion.Estado != EstadoPublicacion.OfertaAceptada)
             throw new InvalidOperationException("Sólo se puede iniciar una publicación que tenga una oferta aceptada.");
@@ -239,7 +240,7 @@ public class OfertaService(FletarDbContext db, IMapper mapper, IFcmSenderService
         var publicacion = await BuscarPublicacionOFallarAsync(publicacionId);
 
         if (publicacion.UsuarioId != usuarioIdDueno)
-            throw new UnauthorizedAccessException("No tenés permiso para completar esta publicación.");
+            throw new AccesoDenegadoException("No tenés permiso para completar esta publicación.");
 
         if (publicacion.Estado != EstadoPublicacion.EnCurso)
             throw new InvalidOperationException("Sólo se puede completar una publicación que esté En Curso.");

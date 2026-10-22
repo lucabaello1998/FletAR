@@ -36,11 +36,15 @@ public class FcmSenderService(FletarDbContext db, FirebaseSettings firebaseSetti
         {
             await FirebaseMessaging.DefaultInstance.SendAsync(mensaje);
         }
-        catch (FirebaseMessagingException ex)
+        catch (Exception ex)
         {
-            // Best-effort: un token vencido/inválido (usuario desinstaló la app,
-            // etc.) no tiene que romper el flujo de negocio que disparó esto
-            // (crear oferta, aceptarla, completar la publicación).
+            // Best-effort: un token vencido/inválido (usuario desinstaló la app),
+            // credenciales de Firebase vencidas o un error de red no tienen que
+            // romper el flujo de negocio que disparó esto (crear oferta,
+            // aceptarla, completar la publicación). Estos envíos corren DESPUÉS
+            // del SaveChanges: dejarlos escapar convertía una operación ya
+            // persistida en un 500 y el cliente la reintentaba, duplicando
+            // ofertas y mensajes.
             logger.LogWarning(ex, "No se pudo enviar la notificación push al usuario {UsuarioId}", usuarioId);
         }
     }

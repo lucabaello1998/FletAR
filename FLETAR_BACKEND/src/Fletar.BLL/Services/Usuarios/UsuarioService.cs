@@ -40,6 +40,10 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = PageSizePorDefecto;
+        // Mismo tope que el listado de publicaciones: evita traer la tabla
+        // entera y que (page - 1) * pageSize desborde a OFFSET negativo.
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        page = Math.Min(page, 10_000);
 
         var query = db.Usuarios.AsQueryable();
 
@@ -156,13 +160,18 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
             .ToListAsync();
         var publicacionIds = publicaciones.Select(p => p.Id).ToList();
 
+        // Los archivos se borran recién después del SaveChanges: si la escritura
+        // en la base falla, no pueden quedar filas apuntando a documentos/fotos
+        // que ya no existen (los de identidad son los más delicados).
+        var archivosAEliminar = new List<(string Carpeta, string? NombreArchivo, bool Privado)>();
+
         if (publicacionIds.Count > 0)
         {
             var fotos = await db.PublicacionFotos
                 .Where(f => publicacionIds.Contains(f.PublicacionId))
                 .ToListAsync();
             foreach (var foto in fotos)
-                almacenamiento.Eliminar(CarpetasDeArchivos.Publicaciones, foto.NombreArchivo);
+                archivosAEliminar.Add((CarpetasDeArchivos.Publicaciones, foto.NombreArchivo, false));
             db.PublicacionFotos.RemoveRange(fotos);
 
             var reportes = await db.Reportes
@@ -223,15 +232,15 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
             .SingleOrDefaultAsync(v => v.UsuarioId == id);
         if (verificacion is not null)
         {
-            almacenamiento.Eliminar(
-                CarpetasDeArchivos.DocumentosIdentidad, verificacion.NombreArchivoFrente, privado: true);
-            almacenamiento.Eliminar(
-                CarpetasDeArchivos.DocumentosIdentidad, verificacion.NombreArchivoDorso, privado: true);
+            archivosAEliminar.Add(
+                (CarpetasDeArchivos.DocumentosIdentidad, verificacion.NombreArchivoFrente, true));
+            archivosAEliminar.Add(
+                (CarpetasDeArchivos.DocumentosIdentidad, verificacion.NombreArchivoDorso, true));
             db.VerificacionesIdentidad.Remove(verificacion);
         }
 
         // Foto de vehículo y datos de contacto/ubicación.
-        almacenamiento.Eliminar(CarpetasDeArchivos.Vehiculos, usuario.FotoUrl);
+        archivosAEliminar.Add((CarpetasDeArchivos.Vehiculos, usuario.FotoUrl, false));
         usuario.Nombre = "Usuario eliminado";
         usuario.Email = emailAnonimizado;
         usuario.Telefono = null;
@@ -253,6 +262,9 @@ public class UsuarioService(FletarDbContext db, IAlmacenamientoArchivosService a
             token.FechaRevocacion = ahora;
 
         await db.SaveChangesAsync();
+
+        foreach (var (carpeta, nombreArchivo, privado) in archivosAEliminar)
+            almacenamiento.Eliminar(carpeta, nombreArchivo, privado: privado);
     }
 
     private static string EmailAnonimizado(int id) => $"eliminado-{id}@fletar.invalid";

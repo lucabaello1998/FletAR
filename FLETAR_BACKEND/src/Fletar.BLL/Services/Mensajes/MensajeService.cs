@@ -1,4 +1,5 @@
 using AutoMapper;
+using Fletar.BLL.Exceptions;
 using Fletar.BLL.Hubs;
 using Fletar.BLL.Services.Notificaciones;
 using Fletar.DAL;
@@ -99,7 +100,7 @@ public class MensajeService(
             throw new KeyNotFoundException("La oferta indicada no existe.");
 
         if (usuarioIdActual != partes.OfertanteId && usuarioIdActual != partes.DuenoId)
-            throw new UnauthorizedAccessException("No tenés permiso para acceder a esta conversación.");
+            throw new AccesoDenegadoException("No tenés permiso para acceder a esta conversación.");
 
         return (partes.OfertanteId, partes.DuenoId, partes.Titulo);
     }

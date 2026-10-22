@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
@@ -266,6 +267,21 @@ if (string.Equals(
     var dbMigraciones = scopeMigraciones.ServiceProvider.GetRequiredService<FletarDbContext>();
     await dbMigraciones.Database.MigrateAsync();
 }
+
+// Railway (y cualquier deploy detrás de un proxy) entrega todo el tráfico con
+// la IP del proxy en `RemoteIpAddress`: sin esto el rate limit "por IP" era en
+// realidad global (los 10 logins/minuto se compartían entre TODOS los
+// usuarios) y `UseHttpsRedirection` no veía el `X-Forwarded-Proto` original.
+// El proxy de Railway no está en la lista de proxies conocidos de ASP.NET, así
+// que se limpian las listas por defecto y se confía en el encabezado.
+var opcionesForwarded = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    ForwardLimit = 1
+};
+opcionesForwarded.KnownNetworks.Clear();
+opcionesForwarded.KnownProxies.Clear();
+app.UseForwardedHeaders(opcionesForwarded);
 
 app.UseCabecerasDeSeguridad();
 app.UseExceptionHandler();

@@ -1,4 +1,5 @@
 using AutoMapper;
+using Fletar.BLL.Exceptions;
 using Fletar.BLL.Services.Archivos;
 using Fletar.DAL;
 using Fletar.DAL.Models;
@@ -29,7 +30,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
             OrigenDireccionTexto = request.OrigenDireccionTexto,
             Destino = CrearPuntoOpcional(request.DestinoLatitud, request.DestinoLongitud),
             DestinoDireccionTexto = request.DestinoDireccionTexto,
-            FechaDeseada = request.FechaDeseada,
+            FechaDeseada = NormalizarFechaDeseada(request.FechaDeseada),
             FechaPublicacion = DateTime.UtcNow,
             Estado = EstadoPublicacion.Publicada
         };
@@ -44,6 +45,11 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = PageSizePorDefecto;
+        // Tope de pageSize (antes `?pageSize=100000` traía toda la tabla con
+        // fotos) y de page (para que (page - 1) * pageSize no desborde a un
+        // OFFSET negativo que Postgres rechaza).
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        page = Math.Min(page, 10_000);
 
         var estadoFiltro = ParsearEstado(estado);
 
@@ -83,6 +89,15 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
 
     public async Task<IReadOnlyList<PublicacionResponse>> ListarCercanasAsync(double lat, double lng, double radioKm)
     {
+        // El controller ya valida los rangos (400), pero el service se defiende
+        // igual: un Point con NaN/infinito hace fallar a PostGIS con 500.
+        if (!double.IsFinite(lat) || lat is < -90 or > 90)
+            throw new InvalidOperationException("La latitud debe estar entre -90 y 90.");
+        if (!double.IsFinite(lng) || lng is < -180 or > 180)
+            throw new InvalidOperationException("La longitud debe estar entre -180 y 180.");
+        if (!double.IsFinite(radioKm) || radioKm <= 0)
+            throw new InvalidOperationException("El radio debe ser mayor a 0 km.");
+
         var puntoBusqueda = new Point(lng, lat) { SRID = 4326 };
         var radioMetros = radioKm * 1000;
 
@@ -90,6 +105,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
             .Where(p => p.Estado == EstadoPublicacion.Publicada)
             .Where(p => p.Origen.IsWithinDistance(puntoBusqueda, radioMetros))
             .OrderBy(p => p.Origen.Distance(puntoBusqueda))
+            .Take(500)
             .ToListAsync();
 
         return await MapearConNombresAsync(publicaciones);
@@ -110,7 +126,7 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
         publicacion.OrigenDireccionTexto = request.OrigenDireccionTexto;
         publicacion.Destino = CrearPuntoOpcional(request.DestinoLatitud, request.DestinoLongitud);
         publicacion.DestinoDireccionTexto = request.DestinoDireccionTexto;
-        publicacion.FechaDeseada = request.FechaDeseada;
+        publicacion.FechaDeseada = NormalizarFechaDeseada(request.FechaDeseada);
 
         await db.SaveChangesAsync();
 
@@ -306,13 +322,13 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
     private static void ValidarDuenio(Publicacion publicacion, int usuarioId, string accion)
     {
         if (publicacion.UsuarioId != usuarioId)
-            throw new UnauthorizedAccessException($"No tenés permiso para {accion} esta publicación.");
+            throw new AccesoDenegadoException($"No tenés permiso para {accion} esta publicación.");
     }
 
     private static void ValidarDuenioYEstadoEditable(Publicacion publicacion, int usuarioId)
     {
         if (publicacion.UsuarioId != usuarioId)
-            throw new UnauthorizedAccessException("No tenés permiso para modificar esta publicación.");
+            throw new AccesoDenegadoException("No tenés permiso para modificar esta publicación.");
 
         if (publicacion.Estado != EstadoPublicacion.Publicada)
             throw new InvalidOperationException("Sólo se puede modificar una publicación en estado Publicada.");
@@ -352,6 +368,22 @@ public class PublicacionService(FletarDbContext db, IMapper mapper, IAlmacenamie
 
         return new Point(longitud, latitud) { SRID = 4326 };
     }
+
+    /// La columna `FechaDeseada` es `timestamp with time zone` (ver migración
+    /// Inicial) y Npgsql rechaza un DateTime con `Kind = Unspecified` ("Cannot
+    /// write DateTime with Kind=Unspecified to PostgreSQL type 'timestamp with
+    /// time zone'"). Un cliente que manda la fecha sin offset - el caso real de
+    /// Flutter con `DateTime.toIso8601String()` sobre una fecha local de
+    /// `showDatePicker` - deserializa con Kind Unspecified y hacía fallar el
+    /// POST/PUT con un 500. Se interpreta como UTC (la fecha deseada es un dato
+    /// de calendario, no un instante con zona horaria propio).
+    private static DateTime? NormalizarFechaDeseada(DateTime? fecha) => fecha switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } => fecha,
+        { Kind: DateTimeKind.Local } => fecha.Value.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(fecha.Value, DateTimeKind.Utc)
+    };
 
     private static Point? CrearPuntoOpcional(double? latitud, double? longitud)
     {
