@@ -96,3 +96,17 @@ Lo que sigue, en orden de dependencia.
       producción: la API respondió 404 en la prueba E2E).
 - [ ] `GET /api/health/ready` queda disponible para usar como healthcheck con chequeo de
       base; hoy Railway sigue usando `/api/health` (liveness).
+## 6. Incidente de Railway (22/10/2026) y secretos
+
+- Incidente global (status.railway.com, QH8L8B3E): builds y deploys pausados desde
+  las 07:24 UTC, con aviso de seguridad y recomendación de rotar variables. Los
+  commits `b37165f`, `24de08f` y `9ff1613` quedaron **skipped**: producción sigue
+  con el build del 21/10.
+- [x] `DATABASE_URL` actualizado en Railway.
+- [ ] Confirmar en Neon que la password del rol se reseteó (si no, el valor nuevo
+      de `DATABASE_URL` no conecta cuando se redeploye).
+- [ ] Rotar `FLETAR_JWT_KEY` **pospuesto a propósito**: la app está en etapa de
+      demostración, no hay usuarios reales y rotarlo invalida todas las sesiones.
+      Hacerlo cuando se pase a producción en serio (junto con el hosting definitivo).
+- [ ] Después de que los builds vuelvan: Redeploy del último commit y verificar
+      `/api/health/ready`, publicar con fecha, `DELETE /usuarios/me`.
