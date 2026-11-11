@@ -7,6 +7,7 @@
   <img alt="PostGIS" src="https://img.shields.io/badge/PostGIS-Spatial_Data-336791?style=flat-square">
   <img alt="SignalR" src="https://img.shields.io/badge/SignalR-Real_Time-blue?style=flat-square">
   <img alt="License" src="https://img.shields.io/badge/license-UNLICENSED-red?style=flat-square">
+  <a href="https://github.com/lucabaello1998/FletAR/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/lucabaello1998/FletAR?label=release&style=flat-square"></a>
 </p>
 
 **FletAR** es un marketplace de fletes y logística liviana en Argentina. Conecta a
