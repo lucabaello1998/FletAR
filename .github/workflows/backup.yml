@@ -17,7 +17,7 @@ jobs:
   neon:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # El secreto no se puede evaluar en el `if` del job: se chequea acá.
       # Sin DATABASE_URL el backup se saltea en verde (no falla todos los días),

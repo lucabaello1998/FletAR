@@ -26,7 +26,7 @@ jobs:
       FLETAR_JWT_KEY: "ci-jwt-key-012345678901234567890123456789"
       ASPNETCORE_ENVIRONMENT: Testing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
@@ -40,7 +40,7 @@ jobs:
   flutter:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Levantar API + PostGIS y esperar /api/health
         run: |
           cd FLETAR_BACKEND
