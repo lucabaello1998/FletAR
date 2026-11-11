@@ -205,15 +205,15 @@ flutter run -d chrome  # o dispositivo físico/emulador Android
 ### Tests y CI
 
 ```bash
-# Backend
+# Backend: 27 tests xUnit (no necesitan base: usan EF InMemory)
 dotnet test FLETAR_BACKEND/Fletar.sln
 
-# App
+# App: 31 tests de widget + análisis estático
 cd FLETAR_APP && flutter test && flutter analyze
 ```
 
 El workflow `.github/workflows/ci.yml` corre backend, tests de Flutter y un smoke
-test de Docker Compose en cada push/PR.
+test de Docker Compose (levanta PostGIS + API y pega al healthcheck) en cada push/PR.
 
 ---
 
@@ -233,8 +233,9 @@ flutter build appbundle --release \
 
 ## Backups y monitoreo
 
-- **Base:** dump diario con `.github/workflows/backup.yml` (requiere el secret
-  `DATABASE_URL`) y restore window de Neon.
+- **Base:** dump diario con `.github/workflows/backup.yml`. Mientras el secret `DATABASE_URL`
+  no esté cargado, el job se saltea en verde (no rompe el semáforo del repo); al cargarlo empieza
+  a subir el `.dump` como artefacto de 30 días. También hay restore window de Neon.
 - **Uploads:** [`FLETAR_BACKEND/scripts/backup-uploads.ps1`](FLETAR_BACKEND/scripts/backup-uploads.ps1)
   descarga el volumen de Railway. **El volumen no es un backup.**
 - **Detalle operativo:** [`FLETAR_BACKEND/docs/BACKUPS.md`](FLETAR_BACKEND/docs/BACKUPS.md).

@@ -28,6 +28,11 @@ Para activarlo, agregá el secret del repositorio:
 DATABASE_URL = postgresql://... (connection string directa de Neon, sin -pooler)
 ```
 
+**Sin ese secret el workflow se saltea en verde**: el primer paso mira la variable y, si está
+vacía, escribe un aviso en el resumen de la corrida y no ejecuta el `pg_dump`. Es a propósito:
+un backup que falla todos los días enseña a ignorar los rojos del repo, y el secreto no se puede
+evaluar en el `if` del job. Apenas cargues el secret, la corrida siguiente ya baja el dump.
+
 También podés correrlo a mano desde **Actions → Backup → Run workflow**.
 
 ### Dump manual
@@ -86,8 +91,9 @@ copias deben:
 
 ## 4. Checklist
 
-- [ ] `DATABASE_URL` cargada como secret en GitHub.
-- [ ] Workflow `Backup` corriendo sin errores.
+- [ ] `DATABASE_URL` cargada como secret en GitHub (mientras falte, `Backup` queda en verde
+      salteado y **no hay dump**: cargarla es lo que activa el backup).
+- [ ] Workflow `Backup` corriendo sin errores y con artefacto `fletar-neon-*` en la corrida.
 - [ ] Restore window de Neon habilitada.
 - [ ] Copia de uploads descargada y cifrada fuera de Railway.
 - [ ] Restore de prueba hecho en una branch de Neon.

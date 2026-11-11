@@ -19,16 +19,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verificar DATABASE_URL
+      # El secreto no se puede evaluar en el `if` del job: se chequea acá.
+      # Sin DATABASE_URL el backup se saltea en verde (no falla todos los días),
+      # y apenas se carga el secret empieza a correr solo.
+      - name: ¿Hay DATABASE_URL configurada?
+        id: secreto
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "::error::Falta el secret DATABASE_URL (connection string directa de Neon)."
-            exit 1
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Sin DATABASE_URL: se saltea el backup (ver FLETAR_BACKEND/docs/BACKUPS.md)."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: pg_dump de Neon
+        if: steps.secreto.outputs.skip == 'false'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
@@ -41,6 +48,7 @@ jobs:
               --file="/backup/fletar-$(date -u +%Y%m%d-%H%M%S).dump"
 
       - name: Subir artefacto
+        if: steps.secreto.outputs.skip == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: fletar-neon-${{ github.run_id }}

@@ -14,7 +14,8 @@ backups/
 FLETAR_BACKEND/src/Fletar.API/uploads/
 
 # Flutter / Dart
-FLETAR_APP/.dart_tool/FLETAR_APP/.flutter-plugins
+FLETAR_APP/.dart_tool/
+FLETAR_APP/.flutter-plugins
 FLETAR_APP/.flutter-plugins-dependencies
 FLETAR_APP/.pub-cache/
 FLETAR_APP/.pub/
@@ -41,3 +42,6 @@ Thumbs.db
 .secrets/
 FLETAR_APP/android/key.properties
 *.jks
+
+# Estado local de Claude/agentes (cambia en cada sesión).
+.claude/scheduled_tasks.lock
