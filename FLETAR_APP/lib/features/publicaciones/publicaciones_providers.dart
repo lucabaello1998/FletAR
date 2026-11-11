@@ -21,7 +21,14 @@ final publicacionesListProvider =
 
 class PublicacionesListController extends AsyncNotifier<List<Publicacion>> {
   @override
-  Future<List<Publicacion>> build() => ref.watch(publicacionesApiProvider).listar();
+  Future<List<Publicacion>> build() {
+    // Sin sesión no hay nada que pedir: antes se llamaba a la API en el arranque
+    // (antes del login), volvía 401 y la pantalla quedaba en "tu sesión expiró"
+    // hasta tocar Reintentar. Ahora se reconstruye solo al entrar o salir.
+    final usuarioId = ref.watch(authControllerProvider.select((estado) => estado.valueOrNull?.id));
+    if (usuarioId == null) return Future.value(const []);
+    return ref.watch(publicacionesApiProvider).listar();
+  }
 
   Future<void> recargar() async {
     state = const AsyncLoading();
